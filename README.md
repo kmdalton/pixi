@@ -1,4 +1,4 @@
-#__P__aired __I__mage __X__-fel __I__ntegrator
+#__P__ aired __I__ mage __X__-fel __I__ ntegrator
 Integrate pump probe X-FEL data using nXDS (http://nxds.mpimf-heidelberg.mpg.de/). PIXI accepts sets of images acquired with crystals in the same position and integrates them on a per image basis using the same reflection profiles and geometric parameters for equivalent images. 
 
 
