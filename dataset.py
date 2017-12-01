@@ -21,3 +21,4 @@ class dataset():
     def __iter__(self):
         for i in self.imlist:
             yield i
+

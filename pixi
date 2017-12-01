@@ -5,13 +5,29 @@ from xparm import xparm
 from xdsinp import xdsinp,nxdsinp
 
 
+"""
+PIXI
+
+
+Integrate pump probe X-FEL data using nXDS (http://nxds.mpimf-heidelberg.mpg.de/).
+PIXI accepts sets of images acquired with crystals in the same position and integrates 
+them on a per image basis using the same reflection profiles and geometric parameters 
+for equivalent images."
+"""
+
+
 
 def main():
-    parser = argparse.ArgumentParser(description="Integrate pump probe X-FEL data using nXDS (http://nxds.mpimf-heidelberg.mpg.de/). PIXI accepts sets of images acquired with crystals in the same position and integrates them on a per image basis using the same reflection profiles and geometric parameters for equivalent images.")
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("refimage1", type=str, help="PIXI will integrate an arbitrary number of datasets with parameters learned from the first dataset. Specify the first image in each dataset. Images must be enumerated with fixed width, zero padded integers __immediately__ prior to the file extension (/path/to/image/prefix00001.cbf).")
     parser.add_argument("otherimage1", type=str, nargs='+', help="PIXI will integrate an arbitrary number of datasets with parameters learned from the first dataset. Specify the first image in each dataset. Images must be enumerated with fixed width, zero padded integers __immediately__ prior to the file extension (/path/to/image/prefix00001.cbf).")
     parser.add_argument("--xdsin", type=str, help="XDS.INP file with default parameters to use during integration. Some parameters are overridden during the process, including but not limitted to those relating to spot profiling and parameter refinement. ", default=nxdsinp())
+    parser.add_argument("--generate", action="store_true", help="Use the generate_XDS.INP to try to guess some sane nXDS.INP parameters.")
     args = parser.parse_args()
+
+    if args.generate:
+        pattern = reference_dataset.pattern
+        generate_xdsin(pattern)
 
 """
     call(['generate_XDS.INP', '"{}"'.format(args.path)])
