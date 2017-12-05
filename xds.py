@@ -26,78 +26,95 @@ def get_file(textfile):
 
 
 class xparm(dict):
-  def __init__(self, inFN):
-    f = get_file("nXDS.INP") if input_file is None else get_file(input_file)
-    lines = open(inFN, 'r').readlines()
-    f.close()
-    while len(lines) > 5:
-        p = [lines.pop(5) for i in range(9)]
-        self[p[0].strip()] = parm(p)
-    self.header = lines
+    def __init__(self, input_file=None):
+        f = get_file("XPARM.nXDS") if input_file is None else get_file(input_file)
+        lines = f.readlines()
+        f.close()
+        self.directory = lines[0].strip()
+        self.space_group = int(lines[2].strip())
+        length,self.n_detector_segs,self.nx,self.ny,self.pixel_size_x,self.pixel_size_y = lines[1].split()
 
-  def align_parms(self):
-    for v in self.values():
-        if v.sign == '-':
-            v.flip_axes()
+        length,self.n_detector_segs,self.nx,self.ny = map(int, length,self.n_detector_segs,self.nx,self.ny)
+        self.pixel_size_x,self.pixel_size_y = map(float, self.pixel_size_x,self.pixel_size_y)
 
-  def write(self, outFN):
-    with open(outFN, 'w') as out:
-      out.writelines(self.header)
-      for k in sorted(self):
-        out.writelines(self[k].lines)
+        while len(lines) > 5:
+            p = [lines.pop(5) for i in range(9)]
+            self[p[0].strip()] = parm(p)
+        self.header = lines
+
+    def align_parms(self):
+        for v in self.values():
+            if v.sign == '-':
+                v.flip_axes()
+
+
+    def write(self, outFN):
+        with open(outFN, 'w') as out:
+            out.write("{}\n".format(self.directory))
+            out.write("{: 10d}{: 10d}{: 10d}{: 10d}{: 12.6f}{: 12.6f}\n".format(
+                len(self), 
+                self.n_detector_segs, 
+                self.nx, 
+                self.ny, 
+                self.pixel_size_x, 
+                self.pixel_size_y
+            )
+            out.writelines(self.header)
+            for k in sorted(self):
+                out.writelines(self[k].lines)
 
 class parm():
-  def __init__(self, lines):
-    #TODO: throw an error if len(lines) is wrong
-    self.lines = lines
-    self.A = np.array(map(float, lines[2].split()))
-    self.B = np.array(map(float, lines[3].split()))
-    self.C = np.array(map(float, lines[4].split()))
-    self.vert_axis_name = None
-    self.sign           = None
-    self.degrees        = None
-    self._findvertical__()
-
-  def _findvertical__(self):
-    a  = self.A/np.linalg.norm(self.A)
-    b  = self.B/np.linalg.norm(self.B)
-    c  = self.C/np.linalg.norm(self.C)
-
-    pa = 180.*np.arccos(np.dot(a, [0., 1., 0.]))/np.pi
-    pb = 180.*np.arccos(np.dot(b, [0., 1., 0.]))/np.pi
-    pc = 180.*np.arccos(np.dot(c, [0., 1., 0.]))/np.pi
-
-    na = np.abs(pa-180.)
-    nb = np.abs(pb-180.)
-    nc = np.abs(pc-180.)
-
-    sign = np.argmin([min(pa,pb,pc), min(na,nb,nc)])
-    ax   = np.argmin([min(pa,na), min(pb,nb), min(pc,nc)])
-    self.vert_axis_name = ['A', 'B', 'C'][ax]
-    self.sign = ['+', '-'][sign]
-    self.degrees = [pa, pb, pc][ax]
-
-  def flip_axes(self):
-    #X-->-X, Y-->-Y, Z-->Z
-    self.A = self.A*[-1., -1., 1.]
-    self.B = self.B*[-1., -1., 1.]
-    self.C = self.C*[-1., -1., 1.]
-    self._findvertical__()
-    self._update_lines()
-
-  def _update_lines(self):
-    fun = lambda x: "{: 0.6f}E{:+03d}".format(x/10**(np.floor(np.log10(np.abs(x)))+1), int(np.floor(np.log10(np.abs(x))) +1))
-    self.lines[2] = " "+" ".join(map(fun, self.A)) + "\n"
-    self.lines[3] = " "+" ".join(map(fun, self.B)) + "\n"
-    self.lines[4] = " "+" ".join(map(fun, self.C)) + "\n"
-
-  def __str__(self):
-    return """parm instance:
-      A: {}
-      B: {}
-      C: {}
-      Axis {}: {} degrees to vertical""".format(self.A, self.B, self.C, self.vert_axis_name, self.degrees)
-
+    def __init__(self, lines):
+        #TODO: throw an error if len(lines) is wrong
+        self.lines = lines
+        self.A = np.array(map(float, lines[2].split()))
+        self.B = np.array(map(float, lines[3].split()))
+        self.C = np.array(map(float, lines[4].split()))
+        self.vert_axis_name = None
+        self.sign           = None
+        self.degrees        = None
+        self._findvertical__()
+  
+    def _findvertical__(self):
+        a  = self.A/np.linalg.norm(self.A)
+        b  = self.B/np.linalg.norm(self.B)
+        c  = self.C/np.linalg.norm(self.C)
+  
+        pa = 180.*np.arccos(np.dot(a, [0., 1., 0.]))/np.pi
+        pb = 180.*np.arccos(np.dot(b, [0., 1., 0.]))/np.pi
+        pc = 180.*np.arccos(np.dot(c, [0., 1., 0.]))/np.pi
+  
+        na = np.abs(pa-180.)
+        nb = np.abs(pb-180.)
+        nc = np.abs(pc-180.)
+  
+        sign = np.argmin([min(pa,pb,pc), min(na,nb,nc)])
+        ax   = np.argmin([min(pa,na), min(pb,nb), min(pc,nc)])
+        self.vert_axis_name = ['A', 'B', 'C'][ax]
+        self.sign = ['+', '-'][sign]
+        self.degrees = [pa, pb, pc][ax]
+  
+    def flip_axes(self):
+        #X-->-X, Y-->-Y, Z-->Z
+        self.A = self.A*[-1., -1., 1.]
+        self.B = self.B*[-1., -1., 1.]
+        self.C = self.C*[-1., -1., 1.]
+        self._findvertical__()
+        self._update_lines()
+  
+    def _update_lines(self):
+        fun = lambda x: "{: 0.6f}E{:+03d}".format(x/10**(np.floor(np.log10(np.abs(x)))+1), int(np.floor(np.log10(np.abs(x))) +1))
+        self.lines[2] = " "+" ".join(map(fun, self.A)) + "\n"
+        self.lines[3] = " "+" ".join(map(fun, self.B)) + "\n"
+        self.lines[4] = " "+" ".join(map(fun, self.C)) + "\n"
+  
+    def __str__(self):
+        return """parm instance:
+            A: {}
+            B: {}
+            C: {}
+            Axis {}: {} degrees to vertical""".format(self.A, self.B, self.C, self.vert_axis_name, self.degrees)
+  
 
 
 #All valid nXDS params as per the Oct 14, 2017 version
@@ -441,6 +458,11 @@ class nxdsinp(xdsinp):
         text = ''.join([re.sub(r'!.+', '', i).strip() for i in f])
         self.regex = re.compile(r"({})".format('|'.join(map(re.escape, self._paramlist))))
         self._parse(text)
+    def write(self, outFN=None):
+        if outFN is None:
+            outFN = "nXDS.INP"
+        with open(outFN, 'w') as out:
+            out.write(self.text())
 
 class dataset():
     def __init__(self, imageFN=None):
@@ -539,6 +561,42 @@ class xds_ascii():
         self.data = pd.read_csv(f, sep=r"\s*", comment='!', names=self.fields, header=None)
 
     def write(self, outFN=None):
+        if outFN is None:
+            outFN = "nXDS_ASCII.HKL"
         out.write(''.join(self.header))
         with open(outFN, 'w') as out:
             out.write('\n'.join(map(self._format, self.data)))
+            out.write("!END_OF_DATA")
+
+class uncorrectedhkl():
+    def __init__(self, hklin):
+        f = get_file(hklin)
+        self.header = [i for i in f if i[0] == '!'][:-1]
+        self.fields = []
+        self.fields = self.header[-3][1:].split(',')
+        self.header = ''.join(self.header)
+        f.seek(0)
+        self.data = pd.read_csv(f, sep=r"\s*", comment='!', names=self.fields, header=None)
+        f.close()
+
+        self.imagedata = []
+        image_names            = re.search(r"!IMAGE_NAMES ::.*?! \n", ''.join(self.header), flags=re.DOTALL).group()
+        diffraction_parameters = re.search(r"!DIFFRACTION_PARAMETERS ::.*?! \n", ''.join(self.header), flags=re.DOTALL).group()
+        image_control          = re.search(r"!IMAGE_CONTROL ::.*?!NUMBER", ''.join(self.header), flags=re.DOTALL).group()
+        
+        image_names = re.sub(r"!", "", image_names).split('\n')[:-1]
+        diffraction_parameters = re.sub(r"!", "", diffraction_parameters).split('\n')[:-1]
+        image_control= re.sub(r"!", "", image_control).split('\n')[:-1]
+
+        fields = image_names[0].split('::')[1].split(',') + \
+            diffraction_parameters[0].split('::')[1].split(',') + \
+            image_control[0].split('::')[1].split(',')
+        data = '\n'.join(map(' '.join, zip(image_names[1:], diffraction_parameters[1:], image_control[1:])))
+        print fields
+        print data
+        print len(fields)
+        print len(data[0].split())
+        self.data = data
+        self.p = pd.read_csv(StringIO(data), sep=r"\s*", names=fields, engine='python')
+        self.fields=fields
+

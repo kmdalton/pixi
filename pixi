@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
+import xds
+from subprocess import call
 import argparse
-from xparm import xparm
-from xdsinp import xdsinp,nxdsinp
 
 
 """
@@ -16,7 +16,6 @@ for equivalent images."
 """
 
 
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("refimage1", type=str, help="PIXI will integrate an arbitrary number of datasets with parameters learned from the first dataset. Specify the first image in each dataset. Images must be enumerated with fixed width, zero padded integers __immediately__ prior to the file extension (/path/to/image/prefix00001.cbf).")
@@ -25,50 +24,46 @@ def main():
     parser.add_argument("--generate", action="store_true", help="Use the generate_XDS.INP to try to guess some sane nXDS.INP parameters.")
     args = parser.parse_args()
 
+    reference_dataset = xds.dataset(parser.refimage1)
+
     if args.generate:
-        pattern = reference_dataset.pattern
-        generate_xdsin(pattern)
+        xdsinp = reference_dataset.generate_nxdsin()
+    else:
+        xdsinp = xds.nxdsinp()
 
-"""
-    call(['generate_XDS.INP', '"{}"'.format(args.path)])
-    xdsinp = xdsdotinp()
     if args.xdsin is not None:
-        overrides = xdsdotinp(args.xdsin)
+        overrides = xds.nxdsinp(args.xdsin)
         xdsinp.update(overrides)
+
+    """
+    -------------------------------------
+    | phase one: index reference data   |
+    -------------------------------------
+    """
+
+    xdsinp['JOB='] = " XYCORR INIT COLSPOT POWDER IDXREF"
     xdsinp.write()
-    call(['xds_par'])
+    call(['nxds_par'])
 
+    """
+    -------------------------------------
+    | phase two: align A matrices       |
+    -------------------------------------
+    """
+    xparms = xds.xparm("XPARM.nXDS")
+    xparms.align_parms()
+    xparms.write()
 
+    
+    """
+    -------------------------------------
+    | phase three: integrate ref data   |
+    -------------------------------------
+    """
+    xdsinp['JOB='] = " INTEGRATE"
+    xdsinp.write()
+    call(['nxds_par'])
 
-
-  #Backup input file
-  call(["cp", "nXDS.INP", "nXDS.INP_backup"])
-  call(["cp", "XPARM.nXDS", "XPARM.nXDS_backup"])
-  lines = open("nXDS.INP", "r").readlines()
-  with open("nXDS.INP_backup", "w") as bup, open("nXDS.INP", "w") as out:
-    for line in lines:
-      if line[0] != "!" and "JOB" in line.split("=")[0]:
-        out.write(" JOB= INTEGRATE \n")
-        bup.write(line)
-      else:
-        out.write(line)
-        bup.write(line)
-  x = xparm(inFN)
-  x.align_parms()
-  header = x.header
-  header[1] = "         1" + header[1][10:]
-  for k,v in x.items():
-    print k,v
-    with open("XPARM.nXDS", "w") as out, open("LISTIM", "w") as listim:
-      out.writelines(header)
-      out.writelines(v.lines)
-      listim.write(k)
-    call(["nxds_par"])
-    with open("INTEGRATE.HKL", "r") as hkl, open("OUT.HKL", "a") as out:
-      out.write(k + "\n")
-      out.writelines([i for i in hkl if i[0] != "!"])
-      out.close()
-"""
 
 if __name__=="__main__":
   main()
