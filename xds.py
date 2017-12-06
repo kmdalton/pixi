@@ -3,7 +3,7 @@ from subprocess import call
 from os.path import exists
 from glob import glob
 from StringIO import StringIO
-import argparse,re
+import re
 import numpy as np
 
 def get_file(textfile):
@@ -58,6 +58,7 @@ class xparm(dict):
                 self.ny, 
                 self.pixel_size_x, 
                 self.pixel_size_y
+                )
             )
             out.writelines(self.header)
             for k in sorted(self):
@@ -506,22 +507,6 @@ class dataset():
         xdsin = self.generate_xdsin()
         return nxdsinp(StringIO(xdsin.text()))
 
-xds_datatypes = {
-    "H"          : int,
-    "K"          : int,
-    "L"          : int,
-    "IOBS"       : float,
-    "SIGMA(IOBS)": float,
-    "XD"         : float,
-    "YD"         : float,
-    "ZD"         : float,
-    "RLP"        : float,
-    "PEAK"       : int,
-    "CORR"       : int,
-    "PSI"        : float,
-}
-
-
 
 xds_format_strings = {
     "H"          : "{: 6d}",
@@ -536,6 +521,7 @@ xds_format_strings = {
     "PEAK"       : "{: 4d}",
     "CORR"       : "{: 4d}",
     "PSI"        : "{: 8.2f}",
+    "ISEG"       : "{:d)",
 }
 
 class xds_ascii():
@@ -571,32 +557,85 @@ class xds_ascii():
 class uncorrectedhkl():
     def __init__(self, hklin):
         f = get_file(hklin)
-        self.header = [i for i in f if i[0] == '!'][:-1]
-        self.fields = []
-        self.fields = self.header[-3][1:].split(',')
-        self.header = ''.join(self.header)
+        header  = re.search(r".*?\n!END_OF_HEADER", f.read(), re.DOTALL).group()
+        image_names            = re.search(r"(?<=!IMAGE_NAMES ::).*?(?=\n! \n)", header, flags=re.DOTALL).group()
+        diffraction_parameters = re.search(r"(?<=!DIFFRACTION_PARAMETERS ::).*?(?=\n! \n)", header, flags=re.DOTALL).group()
+        image_control          = re.search(r"(?<=!IMAGE_CONTROL :: ).*?(?=\n!NUMBER)", header, flags=re.DOTALL).group()
+
+        image_names            = re.sub(r"[!,]", "", image_names)
+        diffraction_parameters = re.sub(r"[!,]", "", diffraction_parameters)
+        image_control          = re.sub(r"[!,]", "", image_control)
+
+        self.spec    = re.search(r"!NUMBER_OF_ITEMS.*?!END_OF_HEADER", header, re.DOTALL).group()
+        self.header = re.search(r".*?(?=\n!IMAGE_NAMES ::)", header, re.DOTALL).group()
+
+        self.imagedata = pd.read_csv(StringIO(image_names), sep="\s*", index_col=0)
+
+        diffraction_parameter_names = [
+            "Image#",
+            "wavelength",
+            "incident_beam_x",
+            "incident_beam_y",
+            "incident_beam_z",
+            "A_x",
+            "A_y",
+            "A_z",
+            "B_x",
+            "B_y",
+            "B_z",
+            "C_x",
+            "C_y",
+            "C_z",
+            "ORGX",
+            "ORGY",
+            "F",
+        ]
+        self.imagedata = self.imagedata.join(
+           pd.read_csv(StringIO(diffraction_parameters), 
+               sep="\s*", 
+               skiprows=1, 
+               names=diffraction_parameter_names, 
+               index_col=0
+           )
+       )
+
+        image_control_parameter_names = [
+            "Image#",
+            "#reflections",
+            "#background_pixels",
+            "#spot_pixels",
+            "#strong_spots",
+            "#spot_profiles",
+            "#overloaded",
+            "sigma1",
+            "sigma2",
+            "rho",
+            "reflecting_range_esd_1",
+            "reflecting_range_esd_2",
+        ]
+        self.imagedata = self.imagedata.join(
+            pd.read_csv(StringIO(image_control), 
+                sep="\s*", 
+                skiprows=1, 
+                names=image_control_parameter_names, 
+                index_col=0
+            )
+        )
+
+        self.fields = self.spec.split('\n')[-3][1:].split(',')
+        self.fields = [i if i!='SIGMA' else 'SIGMA(IOBS)' for i in self.fields]
         f.seek(0)
-        self.data = pd.read_csv(f, sep=r"\s*", comment='!', names=self.fields, header=None)
+        self.data = pd.read_csv(f, sep=r"\s*", comment='!', names=self.fields, header=None, engine='python')
         f.close()
 
-        self.imagedata = []
-        image_names            = re.search(r"!IMAGE_NAMES ::.*?! \n", ''.join(self.header), flags=re.DOTALL).group()
-        diffraction_parameters = re.search(r"!DIFFRACTION_PARAMETERS ::.*?! \n", ''.join(self.header), flags=re.DOTALL).group()
-        image_control          = re.search(r"!IMAGE_CONTROL ::.*?!NUMBER", ''.join(self.header), flags=re.DOTALL).group()
-        
-        image_names = re.sub(r"!", "", image_names).split('\n')[:-1]
-        diffraction_parameters = re.sub(r"!", "", diffraction_parameters).split('\n')[:-1]
-        image_control= re.sub(r"!", "", image_control).split('\n')[:-1]
-
-        fields = image_names[0].split('::')[1].split(',') + \
-            diffraction_parameters[0].split('::')[1].split(',') + \
-            image_control[0].split('::')[1].split(',')
-        data = '\n'.join(map(' '.join, zip(image_names[1:], diffraction_parameters[1:], image_control[1:])))
-        print fields
-        print data
-        print len(fields)
-        print len(data[0].split())
-        self.data = data
-        self.p = pd.read_csv(StringIO(data), sep=r"\s*", names=fields, engine='python')
-        self.fields=fields
-
+    def write_xds_ascii(self, outFN):
+        with open(outFN, 'w') as out:
+            out.write("!FORMAT=XDS_ASCII    MERGE=FALSE    FRIEDEL'S_LAW=FALSE\n") #TODO: find out of friedel's law can ever be true here
+            out.write("!Generated by PIXI")
+            fields = ['H', 'K', 'L', 'IOBS', 'SIGMA(IOBS)']
+            out.write("!NUMBER_OF_ITEMS_IN_EACH_DATA_RECORD={:d}\n".format(len(fields))
+            for i,field in enumerate(fields, 1):
+                out.write("!ITEM_{}={:d}\n".format(field, i))
+            format = lambda x: "".join([xds_format_strings[i] for i in fields]).format(x) 
+            out.write('\n'.join(map(format, self.data)))
+            out.write("!END_OF_DATA")
