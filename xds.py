@@ -1,4 +1,5 @@
 import pandas as pd
+from _xds_inp import xds_params, nxds_params
 from subprocess import call
 from os.path import exists
 from glob import glob
@@ -25,6 +26,26 @@ def get_file(textfile):
 
 
 class xparm(dict):
+    """
+    A class to parse, modify and write XPARM.nXDS files output by
+    the IDXREF program of nXDS (http://nxds.mpimf-heidelberg.mpg.de/)
+    
+    Parameters
+    ----------
+    input_file : str or file
+        Name of 'XPARM.nXDS' file or file object.
+    
+    Attributes
+    ----------
+    pixel_size_x : float
+        The size of a pixel in the detector x-axis (mm). 
+    pixel_size_y : float
+        The size of a pixel in the detector y-axis (mm).
+    directory : str
+        The directory which contains the indexed images. 
+    space_group : int
+        Space group number corresponding to the images. 
+    """
     def __init__(self, input_file=None):
         f = get_file("XPARM.nXDS") if input_file is None else get_file(input_file)
         lines = f.readlines()
@@ -38,16 +59,33 @@ class xparm(dict):
 
         while len(lines) > 5:
             p = [lines.pop(5) for i in range(9)]
-            self[p[0].strip()] = parm(p)
+            self[p[0].strip()] = parm(''.join(p))
         self.header = lines[2:]
 
     def align_parms(self):
+        """
+        Flip unit cell axes to align the closest axis with the +Y direction of the detector. 
+        
+        See Also
+        --------
+        parm.flip_axes
+        """
         for v in self.values():
             if v.sign == '-':
                 v.flip_axes()
 
 
     def write(self, outFN, *images):
+        """
+        Save current entries to XPARM.nXDS format file.
+        
+        Parameters
+        ----------
+        outFN : str
+            Name of the output file to write.
+        *images : str
+            Name(s) of images to write to outFN. Must match xparm.keys().
+        """
         if len(images) == 0:
             images = sorted(self)
         with open(outFN, 'w') as out:
@@ -66,12 +104,53 @@ class xparm(dict):
                 out.writelines(self[k].lines)
 
 class parm():
-    def __init__(self, lines):
+    """
+    A class representing the diffraction parameters associated with an image. 
+    Based on the IDXREF output file, XPARM.nXDS.
+
+    Parameters
+    ----------
+    text : str
+        Text of an XPARM.nXDS file associated with a single image. The text
+        contains information about unit cell and detector geometry. This is 
+        documented at (http://nxds.mpimf-heidelberg.mpg.de/html_doc/nXDS_files.html#XPARM.nXDS).
+        Here is an example:
+
+            x_00009.tiff
+                   1.306780       0.001248       0.001672       0.765237
+              0.929059E+01  0.494593E+02  0.831171E+01
+              0.602566E+02 -0.126880E+02  0.819555E+01
+              0.111012E+02  0.933118E+01 -0.675948E+02
+                 959.999695     959.999695      80.025002
+                   1.000000       0.000000       0.000000
+                   0.000000       1.000000       0.000000
+                   0.000000       0.000000       1.000000
+    Attributes
+    ----------
+    lines : list
+        List of lines in the input text
+    A : numpy.ndarray
+        3-vector describing the direction of the unit cell A-vector
+        in the lab frame (X, Y, Z)
+    B : numpy.ndarray
+        3-vector describing the direction of the unit cell B-vector
+        in the lab frame (X, Y, Z)
+    C : numpy.ndarray
+        3-vector describing the direction of the unit cell C-vector
+        in the lab frame (X, Y, Z)
+    vert_axis_name : str
+        The name of the axis which is closest to vertical
+    sign : str
+        "+" or "-", the direction of vert_axis_name
+    degrees : float
+        the number of degrees from vertical of vert_axis_name
+    """
+    def __init__(self, text):
         #TODO: throw an error if len(lines) is wrong
-        self.lines = lines
-        self.A = np.array(map(float, lines[2].split()))
-        self.B = np.array(map(float, lines[3].split()))
-        self.C = np.array(map(float, lines[4].split()))
+        self.lines = text.splitlines(True)
+        self.A = np.array(map(float, self.lines[2].split()))
+        self.B = np.array(map(float, self.lines[3].split()))
+        self.C = np.array(map(float, self.lines[4].split()))
         self.vert_axis_name = None
         self.sign           = None
         self.degrees        = None
@@ -97,6 +176,9 @@ class parm():
         self.degrees = [pa, pb, pc][ax]
   
     def flip_axes(self):
+        """
+        Flip the sign of vert_axis_name by remapping [X, Y, Z] --> [-X, -Y, Z].
+        """
         #X-->-X, Y-->-Y, Z-->Z
         self.A = self.A*[-1., -1., 1.]
         self.B = self.B*[-1., -1., 1.]
@@ -119,297 +201,15 @@ class parm():
   
 
 
-#All valid nXDS params as per the Oct 14, 2017 version
-nxds_params = [
-    #Job control
-    "JOB=",
-    "MAXIMUM_NUMBER_OF_PROCESSORS=",
-    "MAXIMUM_NUMBER_OF_JOBS=",
-    "CLUSTER_NODES=",
-    "IMAGE_DIRECTORY=",
-    "IMAGE_LIST=",
-    "SECONDS=",
-    "VERBOSE=",
-    
-    #XYCORR",
-    "X-GEO_CORR=",
-    "Y-GEO_CORR=",
-    "BRASS_PLATE_IMAGE=",
-    "HOLE_DISTANCE=",
-    "MXHOLE=",
-    "MNHOLE=",
-    "ROFF=",
-    "TOFF=",
-    "STOE_CALIBRATION_PARAMETERS=",
-    
-    #INIT
-    "BACKGROUND_RANGE=",
-    "DARK_CURRENT_IMAGE=",
-    "OFFSET=",
-    "TRUSTED_REGION=",
-    "UNTRUSTED_RECTANGLE=",
-    "UNTRUSTED_ELLIPSE=",
-    "UNTRUSTED_QUADRILATERAL=",
-    "MINIMUM_FRACTION_OF_BACKGROUND_REGION=",
-    "NBX=",
-    "NBY=",
-    
-    #COLSPOT
-    "STRONG_PIXEL=",
-    "MINIMUM_NUMBER_OF_SPOTS=",
-    "MINIMUM_NUMBER_OF_PIXELS_IN_A_SPOT=",
-    "SPOT_MAXIMUM-CENTROID=",
-    
-    #POWDER
-    "POWDER_CENTER_CORRECTION=",
-    
-    #IDXREF
-    "REFINE(IDXREF)=",
-    "RGRID=",
-    "SEPMIN=",
-    "SEPMAX=",
-    "CLUSTER_RADIUS=",
-    "MAXIMUM_NUMBER_OF_DIFFERENCE_VECTOR_CLUSTERS=",
-    "INTEGER_ERROR=",
-    "NUMBER_OF_TESTED_BASIS_ORIENTATIONS=",
-    "INDEX_ERROR=",
-    "INDEX_MAGNITUDE=",
-    "INDEX_QUALITY=",
-    "MINIMUM_FRACTION_OF_INDEXED_SPOTS=",
-    
-    #INTEGRATE
-    "INCLUDE_RESOLUTION_RANGE=",
-    "EXCLUDE_RESOLUTION_RANGE=",
-    "BEAM_DIVERGENCE=",
-    "BEAM_DIVERGENCE_E.S.D.=",
-    "REFLECTING_RANGE_E.S.D.=",
-    "NUMBER_OF_PROFILE_GRID_POINTS_ALONG_ALPHA/BETA=",
-    "MINPK=",
-    "CUT=",
-    "PROFILE_FITTING=",
-    "SIGNAL_PIXEL=",
-    "BACKGROUND_PIXEL=",
-    "MINIMUM_EWALD_OFFSET_CORRECTION=",
-    "MINIMUM_ZETA=",
-    "MAXIMUM_ERROR_OF_SPOT_POSITION=",
-    
-    #CORRECT
-    "REFERENCE_DATA_SET=",
-    "POSTREFINE=",
-    "USE_REFERENCE_IN_POSTREFINEMENT=",
-    "FRIEDEL'S_LAW=",
-    "MERGE=",
-    "MAX_CELL_AXIS_ERROR=",
-    "MAX_CELL_ANGLE_ERROR=",
-    "REJECT_ALIEN=",
-    
-    #Crystal",
-    "SPACE_GROUP_NUMBER=",
-    "UNIT_CELL_CONSTANTS=",
-    
-    #Rotation axis
-    "ROTATION_AXIS=",
-    "OSCILLATION_RANGE=",
-    
-    #Incident beam
-    "X-RAY_WAVELENGTH=",
-    "INCIDENT_BEAM_DIRECTION=",
-    "FRACTION_OF_POLARIZATION=",
-    "POLARIZATION_PLANE_NORMAL=",
-    "AIR=",
-    
-    #Detector hardware
-    "DETECTOR=",
-    "NX=",
-    "NY=",
-    "QX=",
-    "QY=",
-    "MINIMUM_VALID_PIXEL_VALUE=",
-    "OVERLOAD=",
-    "SILICON=",
-    "SENSOR_THICKNESS=",
-    
-    #Detector geometry
-    "DIRECTION_OF_DETECTOR_X-AXIS=",
-    "DIRECTION_OF_DETECTOR_Y-AXIS=",
-    "ORGX=",
-    "ORGY=",
-    "DETECTOR_DISTANCE=",
-    "DEFAULT_REFINE_SEGMENT=",
-    "MINIMUM_NUMBER_OF_REFLECTIONS/SEGMENT=",
-    "SEGMENT=",
-    "REFINE_SEGMENT=",
-    "DIRECTION_OF_SEGMENT_X-AXIS=",
-    "DIRECTION_OF_SEGMENT_Y-AXIS=",
-    "SEGMENT_ORGX=",
-    "SEGMENT_ORGY=",
-    "SEGMENT_DISTANCE=",
-]
-
-#All valid nXDS params as per the November 11, 2017 version
-xds_params = [
-    #Job control
-    "JOB=",
-    "MAXIMUM_NUMBER_OF_JOBS=",
-    "MAXIMUM_NUMBER_OF_PROCESSORS=",
-    "CLUSTER_NODES=",
-    "SECONDS=",
-    "NUMBER_OF_IMAGES_IN_CACHE=",
-    "TEST=",
-    
-    #Detector hardware
-    "DETECTOR=",
-    "NX=",
-    "NY=",
-    "QX=",
-    "QY=",
-    "OVERLOAD=",
-    "MINIMUM_VALID_PIXEL_VALUE=",
-    "SILICON=",
-    "SENSOR_THICKNESS=",
-    
-    #Detector distortions
-    "ROFF=",
-    "TOFF=",
-    "STOE_CALIBRATION_PARAMETERS=",
-    "BRASS_PLATE_IMAGE=",
-    "HOLE_DISTANCE=",
-    "MXHOLE=",
-    "MNHOLE=",
-    "X-GEO_CORR=",
-    "Y-GEO_CORR=",
-    
-    #Detector noise
-    "DARK_CURRENT_IMAGE=",
-    "OFFSET=",
-    "GAIN=",
-    
-    #Trusted detector region",
-    "TRUSTED_REGION=",
-    "UNTRUSTED_RECTANGLE=",
-    "UNTRUSTED_ELLIPSE=",
-    "UNTRUSTED_QUADRILATERAL=",
-    "VALUE_RANGE_FOR_TRUSTED_DETECTOR_PIXELS=",
-    "INCLUDE_RESOLUTION_RANGE=",
-    "EXCLUDE_RESOLUTION_RANGE=",
-    "MINIMUM_ZETA=",
-    
-    #Detector geometry",
-    "DIRECTION_OF_DETECTOR_X-AXIS=",
-    "DIRECTION_OF_DETECTOR_Y-AXIS=",
-    "ORGX=",
-    "ORGY=",
-    "DETECTOR_DISTANCE=",
-    "SEGMENT=",
-    "REFINE_SEGMENT=",
-    "DIRECTION_OF_SEGMENT_X-AXIS=",
-    "DIRECTION_OF_SEGMENT_Y-AXIS=",
-    "SEGMENT_ORGX=",
-    "SEGMENT_ORGY=",
-    "SEGMENT_DISTANCE=",
-    
-    #Data images",
-    "NAME_TEMPLATE_OF_DATA_FRAMES=",
-    "LIB=",
-    "DATA_RANGE=",
-    "EXCLUDE_DATA_RANGE=",
-    "SPOT_RANGE=",
-    "BACKGROUND_RANGE=",
-    "MINIMUM_FRACTION_OF_BACKGROUND_REGION=",
-    
-    #Rotation axis
-    "ROTATION_AXIS=",
-    "OSCILLATION_RANGE=",
-    "STARTING_ANGLE=",
-    "STARTING_FRAME=",
-    "STARTING_ANGLES_OF_SPINDLE_ROTATION=",
-    "TOTAL_SPINDLE_ROTATION_RANGES=",
-    "RESOLUTION_SHELLS=",
-    
-    #Incident beam
-    "X-RAY_WAVELENGTH=",
-    "INCIDENT_BEAM_DIRECTION=",
-    "FRACTION_OF_POLARIZATION=",
-    "POLARIZATION_PLANE_NORMAL=",
-    "AIR=",
-    
-    #Crystal",
-    "SPACE_GROUP_NUMBER=",
-    "UNIT_CELL_CONSTANTS=",
-    "UNIT_CELL_A-AXIS=",
-    "UNIT_CELL_B-AXIS=",
-    "UNIT_CELL_C-AXIS=",
-    "REIDX=",
-    "FRIEDEL'S_LAW=",
-    "MAX_CELL_AXIS_ERROR=",
-    "MAX_CELL_ANGLE_ERROR=",
-    "TEST_RESOLUTION_RANGE=",
-    "MIN_RFL_Rmeas=",
-    "MAX_FAC_Rmeas=",
-    
-    #Spot finding",
-    "NBX=",
-    "NBY=",
-    "BACKGROUND_PIXEL=",
-    "STRONG_PIXEL=",
-    "MAXIMUM_NUMBER_OF_STRONG_PIXELS=",
-    "MINIMUM_NUMBER_OF_PIXELS_IN_A_SPOT=",
-    "SPOT_MAXIMUM-CENTROID=",
-    
-    #Indexing",
-    "RGRID=",
-    "SEPMIN=",
-    "CLUSTER_RADIUS=",
-    "INDEX_ERROR=",
-    "INDEX_MAGNITUDE=",
-    "INDEX_QUALITY=",
-    "INDEX_ORIGIN=",
-    "MAXIMUM_ERROR_OF_SPOT_POSITION=",
-    "MAXIMUM_ERROR_OF_SPINDLE_POSITION=",
-    "MINIMUM_FRACTION_OF_INDEXED_SPOTS=",
-    
-    #Refinement",
-    "REFINE(IDXREF)=",
-    "REFINE(INTEGRATE)=",
-    "REFINE(CORRECT)=",
-    "DEFAULT_REFINE_SEGMENT=",
-    "MINIMUM_NUMBER_OF_REFLECTIONS/SEGMENT=",
-    
-    #Peak profiles",
-    "REFLECTING_RANGE=",
-    "REFLECTING_RANGE_E.S.D.=",
-    "BEAM_DIVERGENCE=",
-    "BEAM_DIVERGENCE_E.S.D.=",
-    "RELRAD=",
-    "RELBET=",
-    "NUMBER_OF_PROFILE_GRID_POINTS_ALONG_ALPHA/BETA=",
-    "NUMBER_OF_PROFILE_GRID_POINTS_ALONG_GAMMA=",
-    "CUT=",
-    "DELPHI=",
-    "MINPK=",
-    "PROFILE_FITTING=",
-    "SIGNAL_PIXEL=",
-    
-    #Correction factors",
-    "STRICT_ABSORPTION_CORRECTION=",
-    "PATCH_SHUTTER_PROBLEM=",
-    "CORRECTIONS=",
-    "MINIMUM_I/SIGMA=",
-    "NBATCH=",
-    "REFLECTIONS/CORRECTION_FACTOR=",
-    "REFERENCE_DATA_SET=",
-    "FIT_B-FACTOR_TO_REFERENCE_DATA_SET=",
-    "WFAC1=",
-    "REJECT_ALIEN=",
-    "DATA_RANGE_FIXED_SCALE_FACTOR=",
-]
-
 class xdsinp(dict):
     """
-    a simple dictionary based class that parses and writes XDS input files. 
+    A simple dictionary based class that parses and writes XDS input files. 
     
-    Args:
-        input_file (str or file, optional): the XDS input file to read in. Either supply the filename as a string or a file object. Defaults to 'XDS.INP'
+    Parameters
+    ----------
+        input_file : str file, optional
+            The XDS input file to read in. Either supply the filename as a string or a file object. If empty, 
+            returns and xdsinp object with no keys or values.
     """
     def __init__(self, input_file=None):
         if input_file is None:
