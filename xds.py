@@ -14,15 +14,14 @@ def get_file(textfile):
 
     Returns
     -------
-    f : file object
+    f : file object or None
     """
     if isinstance(textfile, str):
-        f = open(textfile, 'r')
-    elif textfile is None:
-        f = open("XDS.INP", 'r')
+        return open(textfile, 'r')
+    elif hasattr(textfile, 'read'):
+        return textfile
     else:
-        f = input_file
-    return f
+        return None
 
 
 class xparm(dict):
@@ -34,13 +33,13 @@ class xparm(dict):
         self.space_group = int(lines[2].strip())
         length,self.n_detector_segs,self.nx,self.ny,self.pixel_size_x,self.pixel_size_y = lines[1].split()
 
-        length,self.n_detector_segs,self.nx,self.ny = map(int, length,self.n_detector_segs,self.nx,self.ny)
-        self.pixel_size_x,self.pixel_size_y = map(float, self.pixel_size_x,self.pixel_size_y)
+        length,self.n_detector_segs,self.nx,self.ny = map(int, (length,self.n_detector_segs,self.nx,self.ny))
+        self.pixel_size_x,self.pixel_size_y = map(float, (self.pixel_size_x,self.pixel_size_y))
 
         while len(lines) > 5:
             p = [lines.pop(5) for i in range(9)]
             self[p[0].strip()] = parm(p)
-        self.header = lines
+        self.header = lines[2:]
 
     def align_parms(self):
         for v in self.values():
@@ -54,7 +53,7 @@ class xparm(dict):
         with open(outFN, 'w') as out:
             out.write("{}\n".format(self.directory))
             out.write("{: 10d}{: 10d}{: 10d}{: 10d}{: 12.6f}{: 12.6f}\n".format(
-                len(self), 
+                len(images), 
                 self.n_detector_segs, 
                 self.nx, 
                 self.ny, 
@@ -413,16 +412,12 @@ class xdsinp(dict):
         input_file (str or file, optional): the XDS input file to read in. Either supply the filename as a string or a file object. Defaults to 'XDS.INP'
     """
     def __init__(self, input_file=None):
-        #TODO: This pattern for all 
-        f = get_file("XDS.INP") if input_file is None else get_file(input_file)
-        if isinstance(input_file, str):
-            f = open(input_file, 'r')
-        elif input_file is None:
-            f = open("XDS.INP", 'r')
+        if input_file is None:
+            text = ''
         else:
-            f = input_file
+            text = get_file(input_file).read()
+        text = re.sub(r"!.+?\n", "", text, flags=re.DOTALL)
         self._paramlist = xds_params
-        text = ''.join([re.sub(r'!.+', '', i).strip() for i in f])
         self.regex = re.compile(r"({})".format('|'.join(map(re.escape, self._paramlist))))
         self._parse(text)
 
@@ -456,12 +451,19 @@ class nxdsinp(xdsinp):
         inFN (str or file, optional): the XDS input file to read in. Either supply the filename as a string or a file object. Defaults to 'XDS.INP'
     """
     def __init__(self, input_file=None):
-        f = get_file("nXDS.INP") if input_file is None else get_file(input_file)
+        if input_file is None:
+            text = ''
+        else:
+            text = get_file(input_file).read()
+        text = re.sub(r"!.+?\n", "", text, flags=re.DOTALL)
         self._paramlist = nxds_params
-        text = ''.join([re.sub(r'!.+', '', i).strip() for i in f])
         self.regex = re.compile(r"({})".format('|'.join(map(re.escape, self._paramlist))))
         self._parse(text)
     def write(self, outFN=None):
+        """
+        Args:
+            outFN (str): output filename to save. defaults to 'nXDS.INP'
+        """
         if outFN is None:
             outFN = "nXDS.INP"
         with open(outFN, 'w') as out:
@@ -478,11 +480,11 @@ class dataset():
     def _populate(self):
         suffix = re.search(r"[0-9]+\..*?$", self.imageFN)
         ext    = re.search(r"\.(([0-9]|[A-z])*?)$", self.imageFN)
-        print suffix.group(),ext.group()
         self.pattern = self.imageFN[:suffix.start()] + "[0-9]"*(ext.start() - suffix.start()) + ext.group()
         self.imlist = sorted(glob(self.pattern))
+        self.imlist = [re.search(r"(?<=\/)[^\/]*?$", i).group() for i in self.imlist]
         if "/" in self.imageFN:
-            self.dirname = re.sub(r"\/[^\/]+$", "", self.imageFN)
+            self.dirname = re.match(r".*\/", self.imageFN).group()
         else:
             self.dirname = "./"
 
@@ -508,7 +510,9 @@ class dataset():
 
     def generate_nxdsin(self):
         xdsin = self.generate_xdsin()
-        return nxdsinp(StringIO(xdsin.text()))
+        nxdsin = nxdsinp()
+        nxdsin.update(xdsin)
+        return nxdsin
 
 
 xds_format_strings = {

@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
-import xds
-from subprocess import call
-import argparse
 
 
 """
-PIXI
+                ########################################
+                #                                      #
+                # PIXI -- Paired Image XFEL Integrator #
+                #                                      #
+                ########################################
 
 
 Integrate pump probe X-FEL data using nXDS (http://nxds.mpimf-heidelberg.mpg.de/).
@@ -15,20 +16,26 @@ them on a per image basis using the same reflection profiles and geometric param
 for equivalent images."
 """
 
+import xds
+from subprocess import call
+import argparse
+
+
+
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("refimage1", type=str, help="PIXI will integrate an arbitrary number of datasets with parameters learned from the first dataset. Specify the first image in each dataset. Images must be enumerated with fixed width, zero padded integers __immediately__ prior to the file extension (/path/to/image/prefix00001.cbf).")
-    parser.add_argument("otherimage", type=str, nargs='+', help="PIXI will integrate an arbitrary number of datasets with parameters learned from the first dataset. Specify the first image in each dataset. Images must be enumerated with fixed width, zero padded integers __immediately__ prior to the file extension (/path/to/image/prefix00001.cbf).")
-    parser.add_argument("--xdsin", type=str, help="XDS.INP file with default parameters to use during integration. Some parameters are overridden during the process, including but not limitted to those relating to spot profiling and parameter refinement. ", default=nxdsinp())
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("image1", type=str, nargs='+', help="PIXI will integrate an arbitrary number of datasets with parameters learned from the first dataset. Specify the first image in each dataset. Images must be enumerated with fixed width, zero padded integers __immediately__ prior to the file extension (/path/to/image/prefix00001.cbf).")
+    parser.add_argument("--xdsin", type=str, help="XDS.INP file with default parameters to use during integration. Some parameters are overridden during the process, including but not limitted to those relating to spot profiling and parameter refinement. ", default=None)
     parser.add_argument("--generate", action="store_true", help="Use the generate_XDS.INP to try to guess some sane nXDS.INP parameters.")
+    parser.add_argument("output", help="Specify the output filename for uncorrected HKL file.")
     args = parser.parse_args()
+    outFN = args.output
 
-    reference_dataset = xds.dataset(parser.refimage1)
-    datasets = [reference_dataset] + [xds.dataset(i) for i in parser.otherimage]
+    datasets = [xds.dataset(i) for i in args.image1]
 
     if args.generate:
-        xdsinp = reference_dataset.generate_nxdsin()
+        xdsinp = datasets[0].generate_nxdsin()
     else:
         xdsinp = xds.nxdsinp()
 
@@ -42,46 +49,59 @@ def main():
     -------------------------------------
     """
 
+    with open('LISTIM', 'w') as out:
+        out.write('\n'.join(datasets[0].imlist))
     xdsinp['JOB='] = " XYCORR INIT COLSPOT POWDER IDXREF"
+    xdsinp['IMAGE_LIST='] = "LISTIM"
+    xdsinp['IMAGE_DIRECTORY='] = datasets[0].dirname
+
     xdsinp.write()
     call(['nxds_par'])
 
-    """
-    -------------------------------------
-    | phase two: align A matrices       |
-    -------------------------------------
-    """
+
+#    -------------------------------------
+#    | phase two: align A matrices       |
+#    -------------------------------------
+
     xparms = xds.xparm("XPARM.nXDS")
     xparms.align_parms()
-    xparms.write()
+    xparms.write("XPARM_2.nXDS")
 
     
-    """
-    -------------------------------------
-    | phase three: integrate ref data   |
-    -------------------------------------
-    """
+
+#    -------------------------------------
+#    | phase three: integrate ref data   |
+#    -------------------------------------
+
     xdsinp['JOB='] = " INTEGRATE"
     xdsinp.write()
     call(['nxds_par'])
 
-    """
-    -------------------------------------
-    | phase four: integrate datasets    |
-    -------------------------------------
-    """
+
+#    -------------------------------------
+#    | phase four: integrate datasets    |
+#    -------------------------------------
+
     hkl = xds.uncorrectedhkl("INTEGRATE.HKL")
     xdsinp['JOB='] = " INTEGRATE"
     for i,image in hkl.imagedata.iterrows():
-        xdsinp['BEAM_DIVERGENCE='] = hkl.imadata.beam_divergence
-        xdsinp['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(hkl.imagedata.sigma1, hkl.imagedata.sigma2)
-        xdsinp['REFLECTING_RANGE='] = hkl.imagedata.rho
-        xdsinp['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(hkl.imagedata.reflecting_range_esd_1, hkl.imagedata.reflecting_range_esd_2)
+        xdsinp['BEAM_DIVERGENCE='] = image.beam_divergence
+        xdsinp['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(image.sigma1, image.sigma2)
+        xdsinp['REFLECTING_RANGE='] = image.rho
+        xdsinp['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(image.reflecting_range_esd_1, image.reflecting_range_esd_2)
         with open("LISTIM", "w") as out:
             out.write(image.file_name)
-        xparms.write("XPARM.nXDS", image.file_name)
         for dataset in datasets:
-            xdsinp['DIRECTORY='] = dataset.directory
+            xparms.directory = dataset.dirname
+            xparms.write("XPARM.nXDS", image.file_name)
+            f = open("INTEGRATE.HKL", "w")
+            f.close()
+            xdsinp['IMAGE_DIRECTORY='] = dataset.dirname
+            xdsinp.write('nXDS.INP')
+            call(['nxds_par'])
+            with open(outFN, 'a') as out, open('INTEGRATE.HKL', 'r') as f:
+                out.write("{}{}\n".format(dataset.dirname, image.file_name))
+                out.write(f.read())
 
 if __name__=="__main__":
   main()
