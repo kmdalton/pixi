@@ -87,7 +87,6 @@ def main():
     for i,image in hkl.imagedata.iterrows():
         xdsinp['BEAM_DIVERGENCE='] = image.beam_divergence
         xdsinp['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(image.sigma1, image.sigma2)
-        xdsinp['REFLECTING_RANGE='] = image.rho
         xdsinp['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(image.reflecting_range_esd_1, image.reflecting_range_esd_2)
         with open("LISTIM", "w") as out:
             out.write(image.file_name)
