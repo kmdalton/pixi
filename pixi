@@ -19,12 +19,13 @@ for equivalent images."
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("refimage1", type=str, help="PIXI will integrate an arbitrary number of datasets with parameters learned from the first dataset. Specify the first image in each dataset. Images must be enumerated with fixed width, zero padded integers __immediately__ prior to the file extension (/path/to/image/prefix00001.cbf).")
-    parser.add_argument("otherimage1", type=str, nargs='+', help="PIXI will integrate an arbitrary number of datasets with parameters learned from the first dataset. Specify the first image in each dataset. Images must be enumerated with fixed width, zero padded integers __immediately__ prior to the file extension (/path/to/image/prefix00001.cbf).")
+    parser.add_argument("otherimage", type=str, nargs='+', help="PIXI will integrate an arbitrary number of datasets with parameters learned from the first dataset. Specify the first image in each dataset. Images must be enumerated with fixed width, zero padded integers __immediately__ prior to the file extension (/path/to/image/prefix00001.cbf).")
     parser.add_argument("--xdsin", type=str, help="XDS.INP file with default parameters to use during integration. Some parameters are overridden during the process, including but not limitted to those relating to spot profiling and parameter refinement. ", default=nxdsinp())
     parser.add_argument("--generate", action="store_true", help="Use the generate_XDS.INP to try to guess some sane nXDS.INP parameters.")
     args = parser.parse_args()
 
     reference_dataset = xds.dataset(parser.refimage1)
+    datasets = [reference_dataset] + [xds.dataset(i) for i in parser.otherimage]
 
     if args.generate:
         xdsinp = reference_dataset.generate_nxdsin()
@@ -64,6 +65,23 @@ def main():
     xdsinp.write()
     call(['nxds_par'])
 
+    """
+    -------------------------------------
+    | phase four: integrate datasets    |
+    -------------------------------------
+    """
+    hkl = xds.uncorrectedhkl("INTEGRATE.HKL")
+    xdsinp['JOB='] = " INTEGRATE"
+    for i,image in hkl.imagedata.iterrows():
+        xdsinp['BEAM_DIVERGENCE='] = hkl.imadata.beam_divergence
+        xdsinp['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(hkl.imagedata.sigma1, hkl.imagedata.sigma2)
+        xdsinp['REFLECTING_RANGE='] = hkl.imagedata.rho
+        xdsinp['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(hkl.imagedata.reflecting_range_esd_1, hkl.imagedata.reflecting_range_esd_2)
+        with open("LISTIM", "w") as out:
+            out.write(image.file_name)
+        xparms.write("XPARM.nXDS", image.file_name)
+        for dataset in datasets:
+            xdsinp['DIRECTORY='] = dataset.directory
 
 if __name__=="__main__":
   main()
