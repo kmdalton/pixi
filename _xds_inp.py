@@ -1,3 +1,10 @@
+"""
+This file contains all currently valid input parameters for 
+XDS and nXDS as per Wolfgang Kabsch's website.
+"""
+
+
+
 #All valid nXDS params as per the Oct 14, 2017 version
 nxds_params = [
     #Job control
