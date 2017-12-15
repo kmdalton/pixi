@@ -70,9 +70,9 @@ class xparm(dict):
         --------
         parm.flip_axes
         """
-        for v in self.values():
+        for k,v in self.items():
             if v.sign == '-':
-                v.flip_axes()
+                self[k] = v.flip_axes()
 
 
     def write(self, outFN, *images):
@@ -102,6 +102,14 @@ class xparm(dict):
             out.writelines(self.header)
             for k in images:
                 out.writelines(self[k].lines)
+
+    def values(self):
+        for i in self:
+            yield self[i]
+
+    def __iter__(self):
+        for i in sorted(self.keys()):
+            yield i
 
 class parm():
     """
@@ -142,8 +150,14 @@ class parm():
         The name of the axis which is closest to vertical
     sign : str
         "+" or "-", the direction of vert_axis_name
+    vert_axis_name : str
+        The name of the axis which is closest to vertical
+    sign : str
+        "+" or "-", the direction of vert_axis_name
     degrees : float
         the number of degrees from vertical of vert_axis_name
+    phi : float
+        Estimated angle between A and the detector x-axis
     """
     def __init__(self, text):
         #TODO: throw an error if len(lines) is wrong
@@ -153,7 +167,9 @@ class parm():
         self.C = np.array(map(float, self.lines[4].split()))
         self.vert_axis_name = None
         self.sign           = None
+	#TODO: change self.degrees to self.deflection -- fix dependent functions
         self.degrees        = None
+	self.phi = None
         self._findvertical__()
   
     def _findvertical__(self):
@@ -174,17 +190,39 @@ class parm():
         self.vert_axis_name = ['A', 'B', 'C'][ax]
         self.sign = ['+', '-'][sign]
         self.degrees = [pa, pb, pc][ax]
-  
+        self.phi = 180.*np.arccos(np.dot(a, [1., 0., 0.]))/np.pi
+
     def flip_axes(self):
         """
         Flip the sign of vert_axis_name by remapping [X, Y, Z] --> [-X, -Y, Z].
         """
+	pX = parm(''.join(self.lines))
+	pX.flip_vert('X')
+	pZ = parm(''.join(self.lines))
+	pZ.flip_vert('Z')
+	if pX.phi < pZ.phi:
+            self = pX
+        else:
+            self = pZ
+        return self
+
+    def flip_vert(self, invert_axis=None):
         #X-->-X, Y-->-Y, Z-->Z
-        self.A = self.A*[-1., -1., 1.]
-        self.B = self.B*[-1., -1., 1.]
-        self.C = self.C*[-1., -1., 1.]
+	if invert_axis is None:
+            invert_axis = 'X'
+        if invert_axis == 'X':
+            self.A = self.A*[-1., -1., 1.]
+            self.B = self.B*[-1., -1., 1.]
+            self.C = self.C*[-1., -1., 1.]
+        elif invert_axis == 'Z':
+            self.A = self.A*[ 1., -1.,-1.]
+            self.B = self.B*[ 1., -1.,-1.]
+            self.C = self.C*[ 1., -1.,-1.]
+        else:
+            print "well shit"
         self._findvertical__()
         self._update_lines()
+	return self
   
     def _update_lines(self):
         fun = lambda x: "{: 0.6f}E{:+03d}".format(x/10**(np.floor(np.log10(np.abs(x)))+1), int(np.floor(np.log10(np.abs(x))) +1))
@@ -282,7 +320,9 @@ class dataset():
         ext    = re.search(r"\.(([0-9]|[A-z])*?)$", self.imageFN)
         self.pattern = self.imageFN[:suffix.start()] + "[0-9]"*(ext.start() - suffix.start()) + ext.group()
         self.imlist = sorted(glob(self.pattern))
-        self.imlist = [re.search(r"(?<=\/)[^\/]*?$", i).group() for i in self.imlist]
+	print self.imlist
+        #self.imlist = [re.search(r"(?<=(\/)[^\/]*?$", i).group() for i in self.imlist]
+        self.imlist = [re.search(r"[^\/]*?$", i).group() for i in self.imlist]
         if "/" in self.imageFN:
             self.dirname = re.match(r".*\/", self.imageFN).group()
         else:
