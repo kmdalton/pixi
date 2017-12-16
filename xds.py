@@ -103,6 +103,10 @@ class xparm(dict):
             for k in images:
                 out.writelines(self[k].lines)
 
+    def values(self):
+        for i in self:
+            yield self[i]
+
     def __iter__(self):
         for i in sorted(self.keys()):
             yield i
