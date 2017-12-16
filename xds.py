@@ -103,10 +103,6 @@ class xparm(dict):
             for k in images:
                 out.writelines(self[k].lines)
 
-    def values(self):
-        for i in self:
-            yield self[i]
-
     def __iter__(self):
         for i in sorted(self.keys()):
             yield i
@@ -202,8 +198,10 @@ class parm():
 	pZ.flip_vert('Z')
 	if pX.phi < pZ.phi:
             self = pX
+            print 'x'
         else:
             self = pZ
+            print 'z'
         return self
 
     def flip_vert(self, invert_axis=None):
@@ -223,13 +221,13 @@ class parm():
         self._findvertical__()
         self._update_lines()
 	return self
-  
+
     def _update_lines(self):
         fun = lambda x: "{: 0.6f}E{:+03d}".format(x/10**(np.floor(np.log10(np.abs(x)))+1), int(np.floor(np.log10(np.abs(x))) +1))
         self.lines[2] = " "+" ".join(map(fun, self.A)) + "\n"
         self.lines[3] = " "+" ".join(map(fun, self.B)) + "\n"
         self.lines[4] = " "+" ".join(map(fun, self.C)) + "\n"
-  
+
     def __str__(self):
         return """parm instance:
             A: {}
