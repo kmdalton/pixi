@@ -1,11 +1,61 @@
 import pandas as pd
 from _xds_inp import xds_params, nxds_params
 from subprocess import call
-from os.path import exists
+from os.path import exists,dirname,realpath
 from glob import glob
 from StringIO import StringIO
 import re
 import numpy as np
+
+class symops(dict):
+    def __init__(self, libFN=None):
+        if libFN is None:
+            libFN = dirname(realpath(__file__)) + "/symop.lib"
+        self._parse(libFN)
+    def _parse(self, libFN):
+        with open(libFN, 'r') as f:
+            for match in re.findall(r"(?<=\n)[0-9].*?(?=\n[0-9])", '\n'+f.read(), re.DOTALL):
+                k = int(match.split()[0])
+                self[k] = symop(match)
+
+class symop(dict):
+    def __init__(self, text):
+        self.number = int(text.split()[0])
+        self.name = re.findall(r"(?<=').*?(?=')", text)[0]
+        self._parse(text)
+    def _parse(self, text):
+        for line in text.split('\n')[1:]:
+            self[line] = op(line)
+
+class op():
+    def __init__(self, text):
+        self.rot_mat = np.zeros((3,3))
+        ax  = { 
+            'X':  np.array([1., 0., 0.]), 
+            'Y':  np.array([0., 1., 0.]), 
+            'Z':  np.array([0., 0., 1.]),
+           }
+
+        for i,t in enumerate(text.split(',')):
+            for k,v in ax.items():
+                if '-' + k in t:
+                    self.rot_mat[:,i] -= v
+                elif k in t:
+                    self.rot_mat[:,i] += v
+
+        self.trans = np.zeros(3)
+        div = lambda x: float(x[0])/float(x[1])
+        x,y,z = text.split(',')
+        self.trans[0] = 0. if '/' not in x else div(re.sub(r"[^\/0-9]", "", x).split('/'))
+        self.trans[1] = 0. if '/' not in y else div(re.sub(r"[^\/0-9]", "", y).split('/'))
+        self.trans[2] = 0. if '/' not in z else div(re.sub(r"[^\/0-9]", "", z).split('/'))
+    def rotate(self, vector):
+        return np.matmul(vector, self.rot_mat)
+    def translate(self, vector):
+        """
+        There is a decent chance this is garbage. Not necessary now, but TODO: fix this
+        """
+        return vector + self.trans*vector
 
 def get_file(textfile):
     """Helper for parser classes. 
@@ -51,9 +101,8 @@ class xparm(dict):
         lines = f.readlines()
         f.close()
         self.directory = lines[0].strip()
-        self.space_group = int(lines[2].strip())
         length,self.n_detector_segs,self.nx,self.ny,self.pixel_size_x,self.pixel_size_y = lines[1].split()
-
+        self.space_group_number = int(re.sub(r"[^0-9]", '', lines[2]))
         length,self.n_detector_segs,self.nx,self.ny = map(int, (length,self.n_detector_segs,self.nx,self.ny))
         self.pixel_size_x,self.pixel_size_y = map(float, (self.pixel_size_x,self.pixel_size_y))
 
@@ -66,14 +115,17 @@ class xparm(dict):
         """
         Flip unit cell axes to align the closest axis with the +Y direction of the detector. 
         
-        See Also
+        See Als
         --------
         parm.flip_axes
         """
+        ref = self.values().next()
         for k,v in self.items():
-            if v.sign == '-':
-                self[k] = v.flip_axes()
-
+            if self.space_group_number in IDXAMBOPS:
+                self[k] = v.align(ref, SYMOPS[self.space_group_number], IDXAMBOPS[self.space_group_number])
+            else:
+                self[k] = v.align(ref, SYMOPS[self.space_group_number])
+            ref = self[k]
 
     def write(self, outFN, *images):
         """
@@ -106,6 +158,10 @@ class xparm(dict):
     def values(self):
         for i in self:
             yield self[i]
+
+    def items(self):
+        for i in self:
+            yield i, self[i]
 
     def __iter__(self):
         for i in sorted(self.keys()):
@@ -167,12 +223,12 @@ class parm():
         self.C = np.array(map(float, self.lines[4].split()))
         self.vert_axis_name = None
         self.sign           = None
-	#TODO: change self.degrees to self.deflection -- fix dependent functions
+        #TODO: change self.degrees to self.deflection -- fix dependent functions
         self.degrees        = None
-	self.phi = None
-        self._findvertical__()
-  
-    def _findvertical__(self):
+        self.phi = None
+        self._findvertical()
+
+    def _findvertical(self):
         a  = self.A/np.linalg.norm(self.A)
         b  = self.B/np.linalg.norm(self.B)
         c  = self.C/np.linalg.norm(self.C)
@@ -192,25 +248,57 @@ class parm():
         self.degrees = [pa, pb, pc][ax]
         self.phi = 180.*np.arccos(np.dot(a, [1., 0., 0.]))/np.pi
 
-    def flip_axes(self):
+    def align(self, ref, symops=None, idxambops=None):
+        ref = np.array([ref.A, ref.B, ref.C])
+        friedel_plus = np.array([ self.A,  self.B,  self.C])
+        friedel_minus= np.array([-self.A, -self.B, -self.C])
+        orientations=[]
+        if symops is not None:
+            for k,op in symops.items():
+                orientations.append(np.matmul(friedel_plus, op.rot_mat))
+                orientations.append(np.matmul(friedel_minus, op.rot_mat))
+        else:
+            orientations = [friedel_plus, friedel_minus]
+
+        tmpvar = []
+        if idxambops is not None:
+            for orientation in orientations:
+                for k,op in idxambops.items():
+                    tmpvar.append(np.matmul(orientation, op.rot_mat))
+            orientations=tmpvar
+
+        print len(orientations)
+        dot = lambda x: np.sum(x * ref)
+        print max(map(dot, orientations))
+        self.A, self.B, self.C = orientations[np.argmax(map(dot, orientations))]
+        self._findvertical()
+        return self
+
+    def flip_axes(self, ref=None):
         """
-        Flip the sign of vert_axis_name by remapping [X, Y, Z] --> [-X, -Y, Z].
+        Flip the sign of vert_axis_name by remapping [X, Y, Z] --> [-X, -Y, Z] or [X, -Y, -Z].
         """
-	pX = parm(''.join(self.lines))
-	pX.flip_vert('X')
-	pZ = parm(''.join(self.lines))
-	pZ.flip_vert('Z')
-	if pX.phi < pZ.phi:
+        if ref is None:
+            ref = self.flip_vert('X')
+        pX = parm(''.join(self.lines))
+        pX.flip_vert('X')
+        pZ = parm(''.join(self.lines))
+        pZ.flip_vert('Z')
+        
+        if ref._dot(pX) > ref._dot(pZ):
             self = pX
-            print 'x'
         else:
             self = pZ
-            print 'z'
         return self
+
+    def _dot(self, parm):
+        return np.dot(self.A, parm.A) + \
+               np.dot(self.B, parm.B) + \
+               np.dot(self.C, parm.C) 
 
     def flip_vert(self, invert_axis=None):
         #X-->-X, Y-->-Y, Z-->Z
-	if invert_axis is None:
+        if invert_axis is None:
             invert_axis = 'X'
         if invert_axis == 'X':
             self.A = self.A*[-1., -1., 1.]
@@ -222,7 +310,7 @@ class parm():
             self.C = self.C*[ 1., -1.,-1.]
         else:
             print "well shit"
-        self._findvertical__()
+        self._findvertical()
         self._update_lines()
 	return self
 
@@ -322,7 +410,6 @@ class dataset():
         ext    = re.search(r"\.(([0-9]|[A-z])*?)$", self.imageFN)
         self.pattern = self.imageFN[:suffix.start()] + "[0-9]"*(ext.start() - suffix.start()) + ext.group()
         self.imlist = sorted(glob(self.pattern))
-	print self.imlist
         #self.imlist = [re.search(r"(?<=(\/)[^\/]*?$", i).group() for i in self.imlist]
         self.imlist = [re.search(r"[^\/]*?$", i).group() for i in self.imlist]
         if "/" in self.imageFN:
@@ -492,3 +579,5 @@ class uncorrectedhkl():
             out.write('\n'.join(map(format, self.data)))
             out.write("!END_OF_DATA")
 
+SYMOPS = symops()
+IDXAMBOPS = symops(dirname(realpath(__file__)) + "/idxambops.lib")

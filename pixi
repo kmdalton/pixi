@@ -65,7 +65,7 @@ def main():
 
     xparms = xds.xparm("XPARM.nXDS")
     xparms.align_parms()
-    xparms.write("XPARM_2.nXDS")
+    xparms.write("XPARM.nXDS")
 
     
 
