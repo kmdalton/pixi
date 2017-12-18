@@ -1,4 +1,5 @@
 import pandas as pd
+from copy import copy
 from _xds_inp import xds_params, nxds_params
 from subprocess import call
 from os.path import exists,dirname,realpath
@@ -111,7 +112,7 @@ class xparm(dict):
             self[p[0].strip()] = parm(''.join(p))
         self.header = lines[2:]
 
-    def align_parms(self):
+    def align_parms(self, **kw):
         """
         Flip unit cell axes to align the closest axis with the +Y direction of the detector. 
         
@@ -119,8 +120,20 @@ class xparm(dict):
         --------
         parm.flip_axes
         """
-        ref = self.values().next()
+        deltaphi = kw.get('deltaphi', None)
+        k = self.keys()[0]
+        if self[k].sign == '-':
+            self[k].flip_axes()
+        ref = self[k]
         for k,v in self.items():
+            if deltaphi is not None:
+                ref = copy(self.values().next())
+                suffix = re.search(r"[0-9]+?\.([0-9]|[A-z])*?$", v.lines[0]).group() 
+                image_number = float(suffix.split('.')[0])
+                #print -deltaphi*image_number
+                phi0 = ref.phi
+                ref.roty(-deltaphi*image_number)
+                #print ref.phi - phi0
             if self.space_group_number in IDXAMBOPS:
                 self[k] = v.align(ref, SYMOPS[self.space_group_number], IDXAMBOPS[self.space_group_number])
             else:
@@ -221,11 +234,13 @@ class parm():
         self.A = np.array(map(float, self.lines[2].split()))
         self.B = np.array(map(float, self.lines[3].split()))
         self.C = np.array(map(float, self.lines[4].split()))
+        self.score = None
         self.vert_axis_name = None
         self.sign           = None
         #TODO: change self.degrees to self.deflection -- fix dependent functions
         self.degrees        = None
         self.phi = None
+        self.x,self.y = None,None
         self._findvertical()
 
     def _findvertical(self):
@@ -246,7 +261,10 @@ class parm():
         self.vert_axis_name = ['A', 'B', 'C'][ax]
         self.sign = ['+', '-'][sign]
         self.degrees = [pa, pb, pc][ax]
-        self.phi = 180.*np.arccos(np.dot(a, [1., 0., 0.]))/np.pi
+        self.x = np.dot(a, [1., 0., 0.])
+        self.y = np.dot(a, [0., 0., 1.])
+        self.phi = np.angle(np.complex(self.x, self.y), deg=True)
+        return self
 
     def align(self, ref, symops=None, idxambops=None):
         ref = np.array([ref.A, ref.B, ref.C])
@@ -267,11 +285,10 @@ class parm():
                     tmpvar.append(np.matmul(orientation, op.rot_mat))
             orientations=tmpvar
 
-        print len(orientations)
         dot = lambda x: np.sum(x * ref)
-        print max(map(dot, orientations))
+        self.score=max(map(dot, orientations))
         self.A, self.B, self.C = orientations[np.argmax(map(dot, orientations))]
-        self._findvertical()
+        self = self._findvertical()
         return self
 
     def flip_axes(self, ref=None):
@@ -290,6 +307,21 @@ class parm():
         else:
             self = pZ
         return self
+
+    def roty(self, deltaphi):
+        deltaphi = np.pi*deltaphi/180.
+        rot_mat = np.array([
+            [ np.cos(deltaphi), 0, np.sin(deltaphi)],
+            [                0, 1,                 0],
+            [-np.sin(deltaphi), 0, np.cos(deltaphi)],
+            ])
+        self.rotate_axes(rot_mat)
+
+    def rotate_axes(self, rot_mat):
+        self.A = np.matmul(rot_mat, self.A)
+        self.B = np.matmul(rot_mat, self.B)
+        self.C = np.matmul(rot_mat, self.C)
+        self._findvertical()
 
     def _dot(self, parm):
         return np.dot(self.A, parm.A) + \
