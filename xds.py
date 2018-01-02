@@ -267,9 +267,24 @@ class parm():
         return self
 
     def align(self, ref, symops=None, idxambops=None):
-        ref = np.array([ref.A, ref.B, ref.C])
-        friedel_plus = np.array([ self.A,  self.B,  self.C])
-        friedel_minus= np.array([-self.A, -self.B, -self.C])
+        ref = np.array([
+            ref.A/np.linalg.norm(ref.A), 
+            ref.B/np.linalg.norm(ref.B),
+            ref.C/np.linalg.norm(ref.A),
+            ])
+
+        friedel_plus = np.array([
+            self.A/np.linalg.norm(self.A), 
+            self.B/np.linalg.norm(self.B),
+            self.C/np.linalg.norm(self.A),
+            ])
+
+        friedel_minus = np.array([
+            -self.A/np.linalg.norm(self.A), 
+            -self.B/np.linalg.norm(self.B),
+            -self.C/np.linalg.norm(self.A),
+            ])
+
         orientations=[]
         if symops is not None:
             for k,op in symops.items():

@@ -8,6 +8,9 @@ from mpl_toolkits.mplot3d import Axes3D
 
 def plot_parm(parm):
     A,B,C = parm.A,parm.B,parm.C
+    A = A/np.linalg.norm(A)
+    B = B/np.linalg.norm(B)
+    C = C/np.linalg.norm(C)
 
     f = plt.figure()
     a = Axes3D(f)

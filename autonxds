@@ -25,6 +25,8 @@ def main():
     parser.add_argument("image1", type=str, help="Specify the first image in an XFEL dataset. Images must be enumerated with fixed width, zero padded integers __immediately__ prior to the file extension (/path/to/image/prefix00001.cbf).")
     parser.add_argument("--xdsin", type=str, help="XDS.INP file with default parameters to use during integration. Some parameters are overridden during the process.", default=None)
     parser.add_argument("--generate", action="store_true", help="Use the generate_XDS.INP to try to guess some sane nXDS.INP parameters.")
+    parser.add_argument("--align", action="store_true", help="Align the XPARM entries for consistent indexing.")
+    parser.add_argument("--serial", action="store_true", help="Use nxds rather than nxds_par.")
     args = parser.parse_args()
 
     dataset = xds.dataset(args.image1)
@@ -44,13 +46,26 @@ def main():
 
     with open('LISTIM', 'w') as out:
         out.write('\n'.join(dataset.imlist))
-    xdsinp['JOB='] = " XYCORR INIT COLSPOT POWDER IDXREF INTEGRATE CORRECT"
+    xdsinp['JOB='] = " XYCORR INIT COLSPOT POWDER IDXREF"# INTEGRATE CORRECT"
     xdsinp['IMAGE_LIST='] = "LISTIM"
     xdsinp['IMAGE_DIRECTORY='] = dataset.dirname
 
     xdsinp.write()
-    call(['nxds_par'])
+    if args.serial:
+        call(['nxds'])
+    else:
+        call(['nxds_par'])
+    xparms = xds.xparm("XPARM.nXDS")
+    if args.align:
+        xparms.align_parms()
+    xparms.write("XPARM.nXDS")
 
+    xdsinp['JOB='] = " INTEGRATE CORRECT"
+    xdsinp.write()
+    if args.serial:
+        call(['nxds'])
+    else:
+        call(['nxds_par'])
 
 if __name__=="__main__":
   main()
