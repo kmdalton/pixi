@@ -1,6 +1,6 @@
 import pandas as pd
 from copy import copy
-from _xds_inp import xds_params, nxds_params
+from xds_inp import xds_params, nxds_params
 from subprocess import call
 from os.path import exists,dirname,realpath
 from glob import glob
