@@ -50,7 +50,7 @@ def main():
     """
 
     with open('LISTIM', 'w') as out:
-        out.write('\n'.join(datasets[0].imlist))
+        out.write('\n'.join([i.filename for i in datasets[0]]))
     xdsinp['JOB='] = " XYCORR INIT COLSPOT POWDER IDXREF"
     xdsinp['IMAGE_LIST='] = "LISTIM"
     xdsinp['IMAGE_DIRECTORY='] = datasets[0].dirname

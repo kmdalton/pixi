@@ -456,13 +456,8 @@ class dataset():
         suffix = re.search(r"[0-9]+\..*?$", self.imageFN)
         ext    = re.search(r"\.(([0-9]|[A-z])*?)$", self.imageFN)
         self.pattern = self.imageFN[:suffix.start()] + "[0-9]"*(ext.start() - suffix.start()) + ext.group()
-        self.imlist = sorted(glob(self.pattern))
-        #self.imlist = [re.search(r"(?<=(\/)[^\/]*?$", i).group() for i in self.imlist]
-        self.imlist = [re.search(r"[^\/]*?$", i).group() for i in self.imlist]
-        if "/" in self.imageFN:
-            self.dirname = re.match(r".*\/", self.imageFN).group()
-        else:
-            self.dirname = "./"
+        self.imlist = [image(i) for i in sorted(glob(self.pattern))]
+        self.dirname= self.imlist[0].dirname
 
     def __len__(self):
         return len(self.imlist)
@@ -489,6 +484,40 @@ class dataset():
         nxdsin = nxdsinp()
         nxdsin.update(xdsin)
         return nxdsin
+
+class image():
+    """
+    Representation of an image file. Right now, this class has no methods, but the idea is to implement per image methods in the future (ie image.integrate, image.index, etc). 
+
+    Parameters
+    ----------
+    image_path : str
+        Full path of the image file
+
+    Attributes
+    ----------
+    path : str
+        Full path of image file
+    dirname : str
+        Directory which contains the image file
+    index : int
+        Index of the image in the rotation series. Determined from the numbering in image_path
+    """
+    def __init__(self, image_path):
+        self.path = image_path
+        self.filename = re.search(r"[^\/]*?$", image_path).group() 
+        if "/" in self.path:
+            self.dirname = re.match(r".*\/", self.path).group()
+        else:
+            self.dirname = "./"
+        self.index = int(re.search(r"[0-9]+\..*?$", image_path).group().split('.')[0])
+
+    def __str__(self):
+        return """xds.image object
+            path    : {}
+            filename: {}
+            dirname : {}
+            index   : {}""".format(self.path, self.filename, self.dirname, self.index)
 
 
 xds_format_strings = {
