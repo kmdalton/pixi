@@ -16,9 +16,8 @@ them on a per image basis using the same reflection profiles and geometric param
 for equivalent images."
 """
 
-import xds
+import xds,re,argparse
 from subprocess import call
-import argparse
 
 
 
@@ -84,23 +83,26 @@ def main():
 
     hkl = xds.uncorrectedhkl("INTEGRATE.HKL")
     xdsinp['JOB='] = " INTEGRATE"
-    for i,image in hkl.imagedata.iterrows():
-        xdsinp['BEAM_DIVERGENCE='] = image.beam_divergence
-        xdsinp['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(image.sigma1, image.sigma2)
-        xdsinp['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(image.reflecting_range_esd_1, image.reflecting_range_esd_2)
+    for i,imagedatum in hkl.imagedata.iterrows():
+        index = int(re.search(r"[0-9]+\..*?$", imagedatum['file_name']).group().split('.')[0])
+        xdsinp['BEAM_DIVERGENCE='] = imagedatum.beam_divergence
+        xdsinp['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(imagedatum.sigma1, imagedatum.sigma2)
+        xdsinp['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(imagedatum.reflecting_range_esd_1, imagedatum.reflecting_range_esd_2)
         with open("LISTIM", "w") as out:
-            out.write(image.file_name)
+            out.write(imagedatum.file_name)
         for dataset in datasets:
-            xparms.directory = dataset.dirname
-            xparms.write("XPARM.nXDS", image.file_name)
-            f = open("INTEGRATE.HKL", "w")
-            f.close()
-            xdsinp['IMAGE_DIRECTORY='] = dataset.dirname
-            xdsinp.write('nXDS.INP')
-            call(['nxds_par'])
-            with open(outFN, 'a') as out, open('INTEGRATE.HKL', 'r') as f:
-                out.write("{}{}\n".format(dataset.dirname, image.file_name))
-                out.write(f.read())
+            for image in dataset:
+                if image.index == index:
+                    xparms.directory = dataset.dirname
+                    xparms.write("XPARM.nXDS", image.filename)
+                    f = open("INTEGRATE.HKL", "w")
+                    f.close()
+                    xdsinp['IMAGE_DIRECTORY='] = dataset.dirname
+                    xdsinp.write('nXDS.INP')
+                    call(['nxds_par'])
+                    with open(outFN, 'a') as out, open('INTEGRATE.HKL', 'r') as f:
+                        out.write("{}{}\n".format(dataset.dirname, image.filename))
+                        out.write(f.read())
 
 if __name__=="__main__":
   main()

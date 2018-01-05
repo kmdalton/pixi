@@ -50,8 +50,9 @@ class op():
         self.trans[0] = 0. if '/' not in x else div(re.sub(r"[^\/0-9]", "", x).split('/'))
         self.trans[1] = 0. if '/' not in y else div(re.sub(r"[^\/0-9]", "", y).split('/'))
         self.trans[2] = 0. if '/' not in z else div(re.sub(r"[^\/0-9]", "", z).split('/'))
-    def rotate(self, vector):
-        return np.matmul(vector, self.rot_mat)
+    def __call__(self, vector):
+        return np.matmul(self.rot_mat, vector)
+
     def translate(self, vector):
         """
         There is a decent chance this is garbage. Not necessary now, but TODO: fix this
@@ -121,10 +122,10 @@ class xparm(dict):
         parm.flip_axes
         """
         deltaphi = kw.get('deltaphi', None)
-        k = self.keys()[0]
-        if self[k].sign == '-':
-            self[k].flip_axes()
-        ref = self[k]
+        #k = self.keys()[0]
+        #if self[k].sign == '-':
+        #    self[k].flip_axes()
+        ref = self[iter(self).next()]
         for k,v in self.items():
             if deltaphi is not None:
                 ref = copy(self.values().next())
@@ -139,6 +140,7 @@ class xparm(dict):
             else:
                 self[k] = v.align(ref, SYMOPS[self.space_group_number])
             ref = self[k]
+        return self
 
     def write(self, outFN, *images):
         """
@@ -268,36 +270,30 @@ class parm():
 
     def align(self, ref, symops=None, idxambops=None):
         ref = np.array([
-            ref.A/np.linalg.norm(ref.A), 
-            ref.B/np.linalg.norm(ref.B),
-            ref.C/np.linalg.norm(ref.A),
+            ref.A, #/np.linalg.norm(ref.A), 
+            ref.B, #/np.linalg.norm(ref.B),
+            ref.C, #/np.linalg.norm(ref.A),
             ])
 
-        friedel_plus = np.array([
-            self.A/np.linalg.norm(self.A), 
-            self.B/np.linalg.norm(self.B),
-            self.C/np.linalg.norm(self.A),
-            ])
+        orientations = [
+            np.array([ self.A,  self.B,  self.C]),
+        ]
 
-        friedel_minus = np.array([
-            -self.A/np.linalg.norm(self.A), 
-            -self.B/np.linalg.norm(self.B),
-            -self.C/np.linalg.norm(self.A),
-            ])
 
-        orientations=[]
+        tmpvar=[]
         if symops is not None:
             for k,op in symops.items():
-                orientations.append(np.matmul(friedel_plus, op.rot_mat))
-                orientations.append(np.matmul(friedel_minus, op.rot_mat))
-        else:
-            orientations = [friedel_plus, friedel_minus]
+                for orientation in orientations:
+                    tmpvar.append(op(orientation))
+        orientations = orientations + tmpvar
+
+        #print "SYMOPS: {}".format(symops)
 
         tmpvar = []
         if idxambops is not None:
             for orientation in orientations:
                 for k,op in idxambops.items():
-                    tmpvar.append(np.matmul(orientation, op.rot_mat))
+                    tmpvar.append(np.matmul(op.rot_mat, orientation))
             orientations=tmpvar
 
         dot = lambda x: np.sum(x * ref)
@@ -498,11 +494,21 @@ class image():
     ----------
     path : str
         Full path of image file
+    filename : str
+        Name of the image file
     dirname : str
         Directory which contains the image file
     index : int
         Index of the image in the rotation series. Determined from the numbering in image_path
     """
+#TODO: add support for hkl arrays. modify uncorrectedhkl to iterate by returning 'image' objects. This is major structure change and should go on a new branch. However, it will vastly simplify the way the data are processed. The dream is to be able to go like:
+#for ref_image in ref_dataset:
+#   ref_image.integrate()
+#   for dataset in datasets:
+#       for image in dataset:
+#           if image.index == ref_image.index:
+#               image.integrate(xds_params=image.integration_params)
+#or something like that. So that we can hide away all the XDS parameters and such
     def __init__(self, image_path):
         self.path = image_path
         self.filename = re.search(r"[^\/]*?$", image_path).group() 
