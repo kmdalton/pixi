@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+# -*- coding: utf-8 -*
 
 
 """
@@ -28,6 +28,8 @@ def main():
     parser.add_argument("--xdsin", type=str, help="XDS.INP file with default parameters to use during integration. Some parameters are overridden during the process, including but not limitted to those relating to spot profiling and parameter refinement. ", default=None)
     parser.add_argument("--spacegroup", type=int, help="Provide the space group number for indexing.", default=None)
     parser.add_argument("--cell", type=float, nargs=6, help="Provide the space group number for indexing.", default=None)
+    parser.add_argument("--highres", type=float, nargs=1, help="High resolution cutoff for integration. Default is zero Ångströms.", default=0.)
+    parser.add_argument("--lowres", type=float, nargs=1, help="Low resolution cutoff for integration. Default is 20 Ångströms.", default=20.)
     parser.add_argument("--generate", action="store_true", help="Use the generate_XDS.INP to try to guess some sane nXDS.INP parameters.")
     parser.add_argument("output", help="Specify the output filename for uncorrected HKL file.")
     args = parser.parse_args()
@@ -45,10 +47,12 @@ def main():
         xdsinp.update(overrides)
 
     if args.spacegroup is not None:
-        xdsinp.update({"SPACE_GROUP_NUMBER=": "{:d}".format(args.spacegroup)})
+        xdsinp["SPACE_GROUP_NUMBER="]= "{:d}".format(args.spacegroup)
 
     if args.cell is not None:
-        xdsinp.update({"UNIT_CELL_CONSTANTS=": ' '.join(map("{:0.2f}".format, args.cell))})
+        xdsinp["UNIT_CELL_CONSTANTS="]= ' '.join(map("{:0.2f}".format, args.cell))
+    
+    xdsinp["INCLUDE_RESOLUTION_RANGE="]= "{:0.1f} {:0.1f}".format(args.lowres, args.highres)
 
     """
     -------------------------------------
