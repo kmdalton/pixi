@@ -3,10 +3,13 @@ from copy import copy
 from xds_inp import xds_params, nxds_params
 from subprocess import call
 from os.path import exists,dirname,realpath
+from os import devnull
 from glob import glob
 from StringIO import StringIO
 import re
 import numpy as np
+
+
 
 class symops(dict):
     def __init__(self, libFN=None):
@@ -230,10 +233,13 @@ class parm():
         the number of degrees from vertical of vert_axis_name
     phi : float
         Estimated angle between A and the detector x-axis
+    imagenumber : int
+        Number of image in series. Determined from the filename in the input text. 
     """
     def __init__(self, text):
         #TODO: throw an error if len(lines) is wrong
         self.lines = text.splitlines(True)
+        self.imagenumber = int(re.search(r"[0-9]+\..*?$", lines[0].strip()).group().split('.')[0])
         self.A = np.array(map(float, self.lines[2].split()))
         self.B = np.array(map(float, self.lines[3].split()))
         self.C = np.array(map(float, self.lines[4].split()))
@@ -463,13 +469,18 @@ class dataset():
         for i in self.imlist:
             yield i
 
-    def generate_xdsin(self):
+    def generate_xdsin(self, **kw):
+        verbose = kw.get('verbose', False):
+        STDOUT  = open(devnull, 'w')
+        if verbose:
+            STDOUT = None
+
         if exists("XDS.INP"):
             with open("XDS.INP", "r") as f:
                 backup = f.read()
         else:
             backup = None
-        call(["generate_XDS.INP", self.pattern])
+        call(["generate_XDS.INP", self.pattern], stdout=STDOUT, stderr=STDERR)
         xdsin = xdsinp("XDS.INP")
         if backup is not None:
             with open("XDS.INP", "w") as f:
