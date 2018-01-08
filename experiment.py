@@ -17,8 +17,9 @@ class crystal():
     """
     A crystal is a list of phi series.
     """
-    def __init__(self):
-        pass
+    def __init__(self, *images):
+        for image in images:
+
 
 
 class image_series():
@@ -123,10 +124,21 @@ class image_series():
             nxdsin = self.generate_nxdsin()
         self.write_imlist("LISTIM")
         nxdsin['JOB='] = 'XYCORR INIT COLSPOT POWDER IDXREF INTEGRATE'
-        nxdsinp['IMAGE_LIST='] = "LISTIM"
-        nxdsinp['IMAGE_DIRECTORY='] = self.dirname
+        nxdsin['IMAGE_LIST='] = "LISTIM"
+        nxdsin['IMAGE_DIRECTORY='] = self.dirname
         nxds.write()
         call(['nxds_par'], stdout=stdout, stderr=stderr)
+
+        hkl = xds.uncorrectedhkl("INTEGRATE.HKL")
+        xdsin['JOB='] = " INTEGRATE"
+        xparm = xparm("XPARM.nXDS")
+        for i,imagedatum in hkl.imagedata.iterrows():
+            xdsin['BEAM_DIVERGENCE='] = imagedatum.beam_divergence
+            xdsin['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(imagedatum.sigma1, imagedatum.sigma2)
+            xdsin['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(imagedatum.reflecting_range_esd_1, imagedatum.reflecting_range_esd_2)
+            for im in self:
+                if im.index == index:
+                    im.xdsin.update(xdsin)
 
 class image():
     """
