@@ -26,6 +26,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("image1", type=str, nargs='+', help="PIXI will integrate an arbitrary number of datasets with parameters learned from the first dataset. Specify the first image in each dataset. Images must be enumerated with fixed width, zero padded integers __immediately__ prior to the file extension (/path/to/image/prefix00001.cbf).")
     parser.add_argument("--xdsin", type=str, help="XDS.INP file with default parameters to use during integration. Some parameters are overridden during the process, including but not limitted to those relating to spot profiling and parameter refinement. ", default=None)
+    parser.add_argument("--spacegroup", type=int, help="Provide the space group number for indexing.", default=None)
+    parser.add_argument("--cell", type=float, nargs=6, help="Provide the space group number for indexing.", default=None)
     parser.add_argument("--generate", action="store_true", help="Use the generate_XDS.INP to try to guess some sane nXDS.INP parameters.")
     parser.add_argument("output", help="Specify the output filename for uncorrected HKL file.")
     args = parser.parse_args()
@@ -42,6 +44,12 @@ def main():
         overrides = xds.nxdsinp(args.xdsin)
         xdsinp.update(overrides)
 
+    if args.spacegroup is not None:
+        xdsinp.update({"SPACE_GROUP_NUMBER=": "{:d}".format(args.spacegroup)})
+
+    if args.cell is not None:
+        xdsinp.update({"UNIT_CELL_CONSTANTS=": ' '.join(map("{:0.2f}".format, args.cell))})
+
     """
     -------------------------------------
     | phase one: index reference data   |
@@ -57,30 +65,34 @@ def main():
     xdsinp.write()
     call(['nxds_par'])
 
-
-#    -------------------------------------
-#    | phase two: align A matrices       |
-#    -------------------------------------
+    """
+    -------------------------------------
+    | phase two: align A matrices       |
+    -------------------------------------
+    """
 
     xparms = xds.xparm("XPARM.nXDS")
     xparms.align_parms()
     xparms.write("XPARM.nXDS")
 
     
-
-#    -------------------------------------
-#    | phase three: integrate ref data   |
-#    -------------------------------------
+    """
+    -------------------------------------
+    | phase three: integrate ref data   |
+    -------------------------------------
+    """
 
     xdsinp['JOB='] = " INTEGRATE"
     xdsinp.write()
     call(['nxds_par'])
 
+    """
+    -------------------------------------
+    | phase four: integrate datasets    |
+    -------------------------------------
+    """
 
-#    -------------------------------------
-#    | phase four: integrate datasets    |
-#    -------------------------------------
-
+    #TODO: more transparent naming conventions in this block:
     hkl = xds.uncorrectedhkl("INTEGRATE.HKL")
     xdsinp['JOB='] = " INTEGRATE"
     for i,imagedatum in hkl.imagedata.iterrows():
@@ -88,12 +100,13 @@ def main():
         xdsinp['BEAM_DIVERGENCE='] = imagedatum.beam_divergence
         xdsinp['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(imagedatum.sigma1, imagedatum.sigma2)
         xdsinp['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(imagedatum.reflecting_range_esd_1, imagedatum.reflecting_range_esd_2)
-        with open("LISTIM", "w") as out:
-            out.write(imagedatum.file_name)
         for dataset in datasets:
             for image in dataset:
                 if image.index == index:
+                    with open("LISTIM", "w") as out:
+                        out.write(image.filename)
                     xparms.directory = dataset.dirname
+                    xparms[image.filename] = xparms[imagedatum['file_name']]
                     xparms.write("XPARM.nXDS", image.filename)
                     f = open("INTEGRATE.HKL", "w")
                     f.close()

@@ -168,7 +168,8 @@ class xparm(dict):
             )
             out.writelines(self.header)
             for k in images:
-                out.writelines(self[k].lines)
+                out.write(k + '\n')
+                out.writelines(self[k].lines[1:])
 
     def values(self):
         for i in self:
