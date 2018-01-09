@@ -239,7 +239,7 @@ class parm():
     def __init__(self, text):
         #TODO: throw an error if len(lines) is wrong
         self.lines = text.splitlines(True)
-        self.imagenumber = int(re.search(r"[0-9]+\..*?$", lines[0].strip()).group().split('.')[0])
+        self.imagenumber = int(re.search(r"[0-9]+\..*?$", self.lines[0].strip()).group().split('.')[0])
         self.A = np.array(map(float, self.lines[2].split()))
         self.B = np.array(map(float, self.lines[3].split()))
         self.C = np.array(map(float, self.lines[4].split()))
@@ -470,7 +470,7 @@ class dataset():
             yield i
 
     def generate_xdsin(self, **kw):
-        verbose = kw.get('verbose', False):
+        verbose = kw.get('verbose', False)
         STDOUT  = open(devnull, 'w')
         if verbose:
             STDOUT = None

@@ -6,23 +6,41 @@ from glob import glob
 NULL = open(devnull, 'w')
 
 
-class experiment()
+class experiment(list):
     """
-    What's the point of this class? It's a container for other classees that compose the experiment. It will have the root methods for batch integration. Experiments contain crystals. Crystals contain images. 
+    What's the point of this class? It's a container for other classees that compose the experiment. It will have the root methods for batch integration. Experiments contain crystals. Crystals contain images. It will be used to keep track of what imseries correspond to what obervable. For instance, use this class to keep track of replicates of a given pump probe delay. 
     """
-    def __init__(self):
-        pass
+    def integrate(self, reference):
+        for crystal in self:
+            crystal[reference].integrate
+            crystal.sync_integration_parameters(reference)
 
-class crystal():
+    def ratio(self, numerator, denominator):
+        """
+        Later we will replace this an arbitrary intensity algebra. But for now, we will just calculate the ratio of image series.
+
+        Parameters
+        ----------
+        numerator : iterable
+            An iterable containing strings which are keys in the crystal objects. These will be pooled to estimate the numerator. 
+        denominator : iterable
+            An iterable containing strings which are keys in the crystal objects. These will be pooled to estimate the denominator. 
+        """
+
+class crystal(dict):
     """
-    A crystal is a list of phi series.
+    A crystal is a dictionary of measurements at the same phi step.
     """
-    def __init__(self, *images):
-        for image in images:
+#Premature optimization is ___________
+    def sync_integration_parameters(self, reference):
+        for im_series in self.values():
+            for image in im_series:
+                for ref in self[reference]:
+                    if image.imagenumber == ref.imagenumber:
+                        image.nxdsin = ref.nxdsin
+                        image.parm  = ref.parm
 
-
-
-class image_series():
+class image_series(list):
     """
     A collection of image objects.
     Parameters
@@ -34,8 +52,6 @@ class image_series():
     ----------
     imageFN : str
         The first image file in the series.
-    imlist : list
-        List of all image files in the series
     pattern : str
         A glob pattern corresponding to the images
     dirname : str
@@ -43,7 +59,6 @@ class image_series():
     """
     def __init__(self, imageFN=None):
         self.imageFN = imageFN #The first image path
-        self.imlist = []
         self.pattern= None
         self.dirname= None
         self._populate()
@@ -52,15 +67,11 @@ class image_series():
         suffix = re.search(r"[0-9]+\..*?$", self.imageFN)
         ext    = re.search(r"\.(([0-9]|[A-z])*?)$", self.imageFN)
         self.pattern = self.imageFN[:suffix.start()] + "[0-9]"*(ext.start() - suffix.start()) + ext.group()
-        self.imlist = [image(i) for i in sorted(glob(self.pattern))]
-        self.dirname= self.imlist[0].dirname
+        [self.append(image(i)) for i in sorted(glob(self.pattern))]
+        self.dirname= self[0].dirname
 
-    def __len__(self):
-        return len(self.imlist)
-
-    def __iter__(self):
-        for i in self.imlist:
-            yield i
+    def __str__(self):
+        return ' '.join([i.filename for i in self])
 
     def generate_xdsin(self, **kw):
         """
@@ -70,7 +81,7 @@ class image_series():
         -------
         xdsin : xds.xdsinp
         """
-        verbose = kw.get('verbose', False):
+        verbose = kw.get('verbose', False)
         stdout  = NULL
         stderr  = STDOUT
         if verbose:
@@ -111,9 +122,18 @@ class image_series():
 
     def integrate(self, nxdsin=None, **kw):
         """
-        Use nXDS to integrate this series. 
+        Use nXDS to integrate this series in batch. Copy integration parameters to images. 
+        Parameters
+        ----------
+        nxdsin : xds.nxdsinp (optional)
+            Optional parameters for integration. Defaults to self.generate_nxdsin output.
+
+        Kwargs
+        ------
+        verbose : bool (optional)
+            If True, do not redirect nXDS output os.dev_null. Default is False.
         """
-        verbose = kw.get('verbose', False):
+        verbose = kw.get('verbose', False)
         stdout  = NULL
         stderr  = STDOUT
         if verbose:
@@ -159,6 +179,8 @@ class image():
         Directory which contains the image file
     imagenumber : int
         Index of the image in the rotation series. Determined from the numbering in image_path
+    xparm : xds.xparm
+        xparm instance giving the A matrix for this image. 
     """
 #TODO: add support for hkl arrays. modify uncorrectedhkl to iterate by returning 'image' objects. This is major structure change and should go on a new branch. However, it will vastly simplify the way the data are processed. The dream is to be able to go like:
 #for ref_image in ref_dataset:
@@ -171,6 +193,7 @@ class image():
     def __init__(self, image_path):
         self.path     = image_path
         self.nxdsin   = xds.nxdsinp()
+        self.parm     = None
         self.filename = re.search(r"[^\/]*?$", image_path).group() 
         if "/" in self.path:
             self.dirname = re.match(r".*\/", self.path).group()
@@ -182,8 +205,22 @@ class image():
         return """xds.image object
             path    : {}
             filename: {}
-            dirname : {}
-            index   : {}""".format(self.path, self.filename, self.dirname, self.index)
+            dirname : {}""".format(self.path, self.filename, self.dirname)
+
+    def index(self, nxdsin=None):
+        """
+        Index the image using nXDS. Updates self.xparm accordingly.
+
+        Parameters
+        ----------
+        xdsin : xds.nxdsinp (optional)
+            Specify nXDS parameter file object for indexing run. 
+        """
+        nxdsin = kw.get(xdsin, xds.nxdsinp())
+        xdsinp['JOB='] = " XYCORR INIT COLSPOT POWDER IDXREF"
+        xdsinp['IMAGE_LIST='] = "LISTIM"
+        xdsinp['IMAGE_DIRECTORY='] = datasets[0].dirname
+        nxdsin.write('nXDS.INP')
 
     def index(self, nxdsin=None):
         """
