@@ -1,5 +1,6 @@
 import re,xds
-from os import chdir, getcwd, devnull
+from os import chdir, getcwd, devnull, remove
+from os.path import exists
 from subprocess import call,STDOUT
 from glob import glob
 
@@ -10,9 +11,9 @@ class experiment(list):
     """
     What's the point of this class? It's a container for other classees that compose the experiment. It will have the root methods for batch integration. Experiments contain crystals. Crystals contain images. It will be used to keep track of what imseries correspond to what obervable. For instance, use this class to keep track of replicates of a given pump probe delay. 
     """
-    def integrate(self, reference):
+    def integrate(self, reference, nxdsinp=None):
         for crystal in self:
-            crystal[reference].integrate
+            crystal[reference].integrate(nxdsinp)
             crystal.sync_integration_parameters(reference)
 
     def ratio(self, numerator, denominator):
@@ -26,6 +27,7 @@ class experiment(list):
         denominator : iterable
             An iterable containing strings which are keys in the crystal objects. These will be pooled to estimate the denominator. 
         """
+        pass
 
 class crystal(dict):
     """
@@ -38,7 +40,7 @@ class crystal(dict):
                 for ref in self[reference]:
                     if image.imagenumber == ref.imagenumber:
                         image.nxdsin = ref.nxdsin
-                        image.parm  = ref.parm
+                        image.xparm  = ref.xparm
 
 class image_series(list):
     """
@@ -73,6 +75,19 @@ class image_series(list):
     def __str__(self):
         return ' '.join([i.filename for i in self])
 
+    def scale(self, scaledict):
+        """
+        Updates image.scale for each image object.
+
+        Parameters
+        ----------
+        scaledict : dict
+            A dictionary like {imagefilename: float}. 
+        """
+        for image in self:
+            if image.filename in scaledict:
+                image.scale = scaledict[image.filename]
+
     def generate_xdsin(self, **kw):
         """
         Use Kay Diederich's generate_XDS.INP bash script to generate an XDS input file from the images in the dataset. 
@@ -94,7 +109,7 @@ class image_series(list):
         else:
             backup = None
         call(["generate_XDS.INP", self.pattern], stdout=stdout, stderr=stderr)
-        xdsin = xdsinp("XDS.INP")
+        xdsin = xds.xdsinp("XDS.INP")
         if backup is not None:
             with open("XDS.INP", "w") as f:
                 f.write(backup)
@@ -109,7 +124,7 @@ class image_series(list):
         nxdsin : xds.nxdsinp
         """
         xdsin = self.generate_xdsin(**kw)
-        nxdsin = nxdsinp()
+        nxdsin = xds.nxdsinp()
         nxdsin.update(xdsin)
         return nxdsin
 
@@ -146,19 +161,25 @@ class image_series(list):
         nxdsin['JOB='] = 'XYCORR INIT COLSPOT POWDER IDXREF INTEGRATE'
         nxdsin['IMAGE_LIST='] = "LISTIM"
         nxdsin['IMAGE_DIRECTORY='] = self.dirname
-        nxds.write()
+        nxdsin.write()
         call(['nxds_par'], stdout=stdout, stderr=stderr)
 
         hkl = xds.uncorrectedhkl("INTEGRATE.HKL")
-        xdsin['JOB='] = " INTEGRATE"
-        xparm = xparm("XPARM.nXDS")
+        nxdsin['JOB='] = " INTEGRATE"
+        xparm = xds.xparm("XPARM.nXDS")
         for i,imagedatum in hkl.imagedata.iterrows():
-            xdsin['BEAM_DIVERGENCE='] = imagedatum.beam_divergence
-            xdsin['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(imagedatum.sigma1, imagedatum.sigma2)
-            xdsin['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(imagedatum.reflecting_range_esd_1, imagedatum.reflecting_range_esd_2)
-            for im in self:
-                if im.index == index:
-                    im.xdsin.update(xdsin)
+            filename = imagedatum.file_name
+            imnxdsin = xds.nxdsinp()
+            imnxdsin.update(nxdsin)
+            imnxdsin['BEAM_DIVERGENCE='] = imagedatum.beam_divergence
+            imnxdsin['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(imagedatum.sigma1, imagedatum.sigma2)
+            imnxdsin['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(imagedatum.reflecting_range_esd_1, imagedatum.reflecting_range_esd_2)
+            self[filename].nxdsin = nxdsin
+#TODO: There is a better way to do this but requires modifying xds.xparm
+            self[filename].xparm = xparm.copy()
+            for k in self[filename].xparm:
+                if k != filename:
+                    del self[filename].xparm[k]
 
 class image():
     """
@@ -181,19 +202,15 @@ class image():
         Index of the image in the rotation series. Determined from the numbering in image_path
     xparm : xds.xparm
         xparm instance giving the A matrix for this image. 
+    scale : float
+        Optional scale parameter for image. Defaults to 1.
     """
-#TODO: add support for hkl arrays. modify uncorrectedhkl to iterate by returning 'image' objects. This is major structure change and should go on a new branch. However, it will vastly simplify the way the data are processed. The dream is to be able to go like:
-#for ref_image in ref_dataset:
-#   ref_image.integrate()
-#   for dataset in datasets:
-#       for image in dataset:
-#           if image.index == ref_image.index:
-#               image.integrate(xds_params=image.integration_params)
-#or something like that. So that we can hide away all the XDS parameters and such
     def __init__(self, image_path):
         self.path     = image_path
         self.nxdsin   = xds.nxdsinp()
-        self.parm     = None
+        self.xparm    = None
+        self.hkl      = None
+        self.scale    = 1.
         self.filename = re.search(r"[^\/]*?$", image_path).group() 
         if "/" in self.path:
             self.dirname = re.match(r".*\/", self.path).group()
@@ -207,7 +224,7 @@ class image():
             filename: {}
             dirname : {}""".format(self.path, self.filename, self.dirname)
 
-    def index(self, nxdsin=None):
+    def index(self, nxdsin=None, **kw):
         """
         Index the image using nXDS. Updates self.xparm accordingly.
 
@@ -216,13 +233,22 @@ class image():
         xdsin : xds.nxdsinp (optional)
             Specify nXDS parameter file object for indexing run. 
         """
-        nxdsin = kw.get(xdsin, xds.nxdsinp())
+        verbose = kw.get('verbose', False)
+        stdout  = NULL
+        stderr  = STDOUT
+        if verbose:
+            stdout,stderr = None,None
+
+        nxdsin = kw.get('nxdsin', xds.nxdsinp())
+        nxdsin.update(self.nxdsin)
         xdsinp['JOB='] = " XYCORR INIT COLSPOT POWDER IDXREF"
         xdsinp['IMAGE_LIST='] = "LISTIM"
-        xdsinp['IMAGE_DIRECTORY='] = datasets[0].dirname
+        xdsinp['IMAGE_DIRECTORY='] = self.dirname
         nxdsin.write('nXDS.INP')
+        with open('LISTIM', 'w') as out:
+            out.write(self.filename)
 
-    def index(self, nxdsin=None):
+    def integrate(self, nxdsin=None, **kw):
         """
         Index the image using nXDS. Updates self.xparm accordingly.
 
@@ -231,8 +257,24 @@ class image():
         xdsin : xds.nxdsinp (optional)
             Specify nXDS parameter file object for indexing run. 
         """
-        nxdsin = kw.get(xdsin, xds.nxdsinp())
-        xdsinp['JOB='] = " XYCORR INIT COLSPOT POWDER IDXREF"
+#TODO: check that self.xparm is not None
+        verbose = kw.get('verbose', False)
+        stdout  = NULL
+        stderr  = STDOUT
+        if verbose:
+            stdout,stderr = None,None
+
+        nxdsin = kw.get('nxdsin', xds.nxdsinp())
+        nxdsin.update(self.nxdsin)
+        xdsinp['JOB='] = " INTEGRATE"
         xdsinp['IMAGE_LIST='] = "LISTIM"
-        xdsinp['IMAGE_DIRECTORY='] = datasets[0].dirname
+        xdsinp['IMAGE_DIRECTORY='] = self.dirname
         nxdsin.write('nXDS.INP')
+        with open('LISTIM', 'w') as out:
+            out.write(self.filename)
+        self.xparm.write()
+
+        remove('INTEGRATE.HKL')
+        call(['nxds_par'], stdout=stdout, stderr=stderr)
+        if exists('INTEGRATE.HKL'):
+            self.hkl = xds.uncorrectedhkl('INTEGRATE.HKL')
