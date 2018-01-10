@@ -164,22 +164,20 @@ class image_series(list):
         nxdsin.write()
         call(['nxds_par'], stdout=stdout, stderr=stderr)
 
-        hkl = xds.uncorrectedhkl("INTEGRATE.HKL")
+        imagedata = xds.uncorrectedhkl("INTEGRATE.HKL").imagedata
         nxdsin['JOB='] = " INTEGRATE"
         xparm = xds.xparm("XPARM.nXDS")
-        for i,imagedatum in hkl.imagedata.iterrows():
-            filename = imagedatum.file_name
-            imnxdsin = xds.nxdsinp()
-            imnxdsin.update(nxdsin)
-            imnxdsin['BEAM_DIVERGENCE='] = imagedatum.beam_divergence
-            imnxdsin['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(imagedatum.sigma1, imagedatum.sigma2)
-            imnxdsin['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(imagedatum.reflecting_range_esd_1, imagedatum.reflecting_range_esd_2)
-            self[filename].nxdsin = nxdsin
-#TODO: There is a better way to do this but requires modifying xds.xparm
-            self[filename].xparm = xparm.copy()
-            for k in self[filename].xparm:
-                if k != filename:
-                    del self[filename].xparm[k]
+        for im in self:
+            integration_params = imagedata.loc[imagedata['file_name']==im.filename]
+            if len(integration_params) == 1:
+                im.nxdsin = xds.nxdsinp()
+                im.nxdsin.update(nxdsin)
+                im.nxdsin['BEAM_DIVERGENCE='] = integration_params.beam_divergence
+                im.nxdsin['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(integration_params.sigma1, integration_params.sigma2)
+                im.nxdsin['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(integration_params.reflecting_range_esd_1, integration_params.reflecting_range_esd_2)
+                im.xparm = xparm.copy()
+                im.xparm.clear()
+                im.xparm[im.filename] = xparm[im.filename]
 
 class image():
     """

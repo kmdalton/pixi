@@ -116,6 +116,9 @@ class xparm(dict):
             self[p[0].strip()] = parm(''.join(p))
         self.header = lines[2:]
 
+    def copy(self):
+        return copy(self)
+
     def align_parms(self, **kw):
         """
         Flip unit cell axes to align the closest axis with the +Y direction of the detector. 
