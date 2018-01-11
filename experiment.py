@@ -1,4 +1,6 @@
 import re,xds
+import numpy as np
+from matplotlib import pyplot as plt
 from os import chdir, getcwd, devnull, remove
 from os.path import exists
 from subprocess import call,STDOUT
@@ -167,17 +169,23 @@ class image_series(list):
         imagedata = xds.uncorrectedhkl("INTEGRATE.HKL").imagedata
         nxdsin['JOB='] = " INTEGRATE"
         xparm = xds.xparm("XPARM.nXDS")
+        spotnxds = xds.spotnxds("SPOT.nXDS")
         for im in self:
+            if im.filename in spotnxds:
+                im.spot = spotnxds.copy()
+                im.spot.clear()
+                im.spot[im.filename] = spotnxds[im.filename]
             integration_params = imagedata.loc[imagedata['file_name']==im.filename]
             if len(integration_params) == 1:
                 im.nxdsin = xds.nxdsinp()
                 im.nxdsin.update(nxdsin)
-                im.nxdsin['BEAM_DIVERGENCE='] = integration_params.beam_divergence
-                im.nxdsin['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(integration_params.sigma1, integration_params.sigma2)
-                im.nxdsin['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(integration_params.reflecting_range_esd_1, integration_params.reflecting_range_esd_2)
+                im.nxdsin['BEAM_DIVERGENCE='] = float(integration_params.beam_divergence)
+                im.nxdsin['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(float(integration_params.sigma1), float(integration_params.sigma2))
+                im.nxdsin['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(float(integration_params.reflecting_range_esd_1), float(integration_params.reflecting_range_esd_2))
                 im.xparm = xparm.copy()
                 im.xparm.clear()
                 im.xparm[im.filename] = xparm[im.filename]
+        return self
 
 class image():
     """
@@ -202,6 +210,8 @@ class image():
         xparm instance giving the A matrix for this image. 
     scale : float
         Optional scale parameter for image. Defaults to 1.
+    spot : xds.spot
+        Spotlist from nxds COLSPOT
     """
     def __init__(self, image_path):
         self.path     = image_path
@@ -215,6 +225,7 @@ class image():
         else:
             self.dirname = "./"
         self.imagenumber = int(re.search(r"[0-9]+\..*?$", image_path).group().split('.')[0])
+        self.spot = None #xds.spotlist
 
     def __str__(self):
         return """xds.image object
@@ -237,14 +248,21 @@ class image():
         if verbose:
             stdout,stderr = None,None
 
-        nxdsin = kw.get('nxdsin', xds.nxdsinp())
-        nxdsin.update(self.nxdsin)
-        xdsinp['JOB='] = " XYCORR INIT COLSPOT POWDER IDXREF"
-        xdsinp['IMAGE_LIST='] = "LISTIM"
-        xdsinp['IMAGE_DIRECTORY='] = self.dirname
-        nxdsin.write('nXDS.INP')
+        n = xds.nxdsinp()
+        if self.nxdsin is not None:
+            n.update(self.nxdsin)
+        n.update(kw.get('nxdsin', xds.nxdsinp()))
+        n['JOB='] = " COLSPOT IDXREF"
+        n['IMAGE_LIST='] = "LISTIM"
+        n['IMAGE_DIRECTORY='] = self.dirname
+        n.write('nXDS.INP')
+        if exists('SPOT.nXDS'):
+            remove('SPOT.nXDS')
         with open('LISTIM', 'w') as out:
             out.write(self.filename)
+        call(['nxds_par'], stdout=stdout, stderr=stderr)
+        if exists('SPOT.nXDS'):
+            self.spot = xds.spotnxds('SPOT.nXDS')
 
     def integrate(self, nxdsin=None, **kw):
         """
@@ -262,17 +280,32 @@ class image():
         if verbose:
             stdout,stderr = None,None
 
-        nxdsin = kw.get('nxdsin', xds.nxdsinp())
-        nxdsin.update(self.nxdsin)
-        xdsinp['JOB='] = " INTEGRATE"
-        xdsinp['IMAGE_LIST='] = "LISTIM"
-        xdsinp['IMAGE_DIRECTORY='] = self.dirname
-        nxdsin.write('nXDS.INP')
+        n = xds.nxdsinp()
+        if self.nxdsin is not None:
+            n.update(self.nxdsin)
+        n.update(kw.get('nxdsin', xds.nxdsinp()))
+        n['JOB='] = " INTEGRATE"
+        n['IMAGE_LIST='] = "LISTIM"
+        n['IMAGE_DIRECTORY='] = self.dirname
+        n.write('nXDS.INP')
         with open('LISTIM', 'w') as out:
             out.write(self.filename)
-        self.xparm.write()
+        self.xparm.write('XPARM.nXDS')
 
-        remove('INTEGRATE.HKL')
+        if exists('INTEGRATE.HKL'):
+            remove('INTEGRATE.HKL')
         call(['nxds_par'], stdout=stdout, stderr=stderr)
         if exists('INTEGRATE.HKL'):
             self.hkl = xds.uncorrectedhkl('INTEGRATE.HKL')
+
+    def plot(self, **kw):
+        #All pixels greater than this percentile get the same value
+        percentile_cutoff = kw.get("percentile_cutoff", 0.999)
+        cmap_name         = kw.get("cmap", "gray_r")
+        data = plt.imread(self.dirname + self.filename)
+        cutoff = np.sort(data.flatten())[int(percentile_cutoff*data.size)]
+        data[data>=cutoff]=cutoff
+        plt.imshow(data, cmap=cmap_name)
+        X,Y = self.spot[self.filename].data.X,self.spot[self.filename].data.Y
+        plt.scatter(X, Y, s=100, facecolors='None', edgecolors='w')
+        

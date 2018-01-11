@@ -380,7 +380,62 @@ class parm():
             C: {}
             Axis {}: {} degrees to vertical""".format(self.A, self.B, self.C, self.vert_axis_name, self.degrees)
   
+class spotnxds(dict):
+    def __init__(self, spotfile=None):
+        if spotfile is None:
+            spotfile = 'SPOT.nXDS'
+        f = get_file(spotfile)
+        self.directory = f.readline().strip()
+        self._populate(f.read())
+        f.close()
 
+    def _populate(self, text):
+        currkey = None
+        for line in text.split('\n'):
+            if len(line.split()) == 1:
+                currkey = line
+                self[currkey] = []
+            elif len(line.split()) >= 3:
+                self[currkey].append(line)
+        self.update({k:spotlist(v) for k,v in self.items()})
+
+    def __iter__(self):
+        for i in sorted(self.keys()):
+            yield i
+
+    def write(self, outFN):
+        with open(outFN, 'w') as out:
+            out.write(self.directory + '\n')
+            for i in self:
+                out.write(self[i].text())
+
+    def copy(self):
+        return copy(self)
+
+class spotlist():
+    def __init__(self, lines):
+        self.nbg     = int(lines[0].split()[0])
+        self.nstrong = int(lines[0].split()[1])
+        self.nspots  = int(lines[0].split()[2])
+        self.data = pd.read_csv(
+            StringIO('\n'.join(lines[1:])),
+            sep    ="\s*",
+            engine ='python',
+            names  = [
+                'n',
+                'X',
+                'Y',
+                'I',
+                'H',
+                'K',
+                'L',
+                ],
+        )
+
+    def text(self):
+        text = '{: 9d}{: 8d}{: 8d}\n'.format(self.nbg, self.nstrong, self.nspots)
+        text = text + '\n'.join(['{: 3d}{: 9.1f}{: 9.1f}{: 8f}.{: 7d}{: 7d}{: 7d}'.format(i.n, i.X, i.Y, i.I, i.H, i.K, i.L) for i in self.data.itertuples()])
+        return text.strip()
 
 class xdsinp(dict):
     """
