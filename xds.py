@@ -716,7 +716,7 @@ class uncorrectedhkl():
         self.fields = self.spec.split('\n')[-3][1:].split(',')
         self.fields = [i if i!='SIGMA' else 'SIGMA(IOBS)' for i in self.fields]
         f.seek(0)
-        self.data = pd.read_csv(f, sep=r"\s*", comment='!', names=self.fields, header=None, engine='python')
+        self.data = pd.read_csv(f, sep=r"\s*", comment='!', index_col=['H', 'K', 'L'], names=self.fields, header=None, engine='python')
         f.close()
 
     def write_xds_ascii(self, outFN):
