@@ -731,5 +731,83 @@ class uncorrectedhkl():
             out.write('\n'.join(map(format, self.data)))
             out.write("!END_OF_DATA")
 
+    def __add__(self, other):
+        if isinstance(other, uncorrectedhkl):
+            d = self.data + other.data
+            err1 =  self.data['SIGMA(IOBS)']
+            err2 = other.data['SIGMA(IOBS)']
+            d['SIGMA(IOBS)'] = np.sqrt(err1**2 + err2**2)
+            d = d.dropna()
+            c = copy(self)
+            c.data = d
+            return c
+        else:
+            d = copy(self.data)
+            d['SIGMA(IOBS)'] = d['SIGMA(IOBS)']
+            d['IOBS'] = d['IOBS'] + other
+            c = copy(self)
+            c.data = d
+            return c
+
+    def __sub__(self, other):
+        if isinstance(other, uncorrectedhkl):
+            d = self.data - other.data
+            err1 =  self.data['SIGMA(IOBS)']
+            err2 = other.data['SIGMA(IOBS)']
+            d['SIGMA(IOBS)'] = np.sqrt(err1**2 + err2**2)
+            d = d.dropna()
+            c = copy(self)
+            c.data = d
+            return c
+        else:
+            d = copy(self.data)
+            d['SIGMA(IOBS)'] = d['SIGMA(IOBS)'] 
+            d['IOBS'] = d['IOBS'] - other
+            c = copy(self)
+            c.data = d
+            return c
+
+    def __div__(self, other):
+        if isinstance(other, uncorrectedhkl):
+            d = self.data / other.data
+            err1 = self.data['SIGMA(IOBS)']
+            err2 = other.data['SIGMA(IOBS)']
+            d['SIGMA(IOBS)'] = d['IOBS']*np.sqrt(
+                (err1 / self.data['IOBS'])**2 + 
+                (err2 / other.data['IOBS'])**2
+            )
+            d = d.dropna()
+            c = copy(self)
+            c.data = d
+            return c
+        else:
+            d = copy(self.data)
+            d['SIGMA(IOBS)'] = d['SIGMA(IOBS)'] / other
+            d['IOBS'] = d['IOBS'] / other
+            c = copy(self)
+            c.data = d
+            return c
+
+    def __mul__(self, other):
+        if isinstance(other, image):
+            d = self.data * other.data
+            err1 = self.data['SIGMA(IOBS)']
+            err2 = other.data['SIGMA(IOBS)']
+            d['SIGMA(IOBS)'] = d['IOBS']*np.sqrt(
+                (err1 / self.data['IOBS'])**2 + 
+                (err2 / other.data['IOBS'])**2
+            )
+            d = d.dropna()
+            c = self.copy()
+            c.data = d
+            return c
+        else:
+            d = copy(self.data)
+            d['SIGMA(IOBS)'] = d['SIGMA(IOBS)'] * other
+            d['IOBS'] = d['IOBS'] * other
+            c = copy(self)
+            c.data = d
+            return c
+
 SYMOPS = symops()
 IDXAMBOPS = symops(dirname(realpath(__file__)) + "/idxambops.lib")

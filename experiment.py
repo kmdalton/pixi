@@ -1,4 +1,5 @@
 import re,xds
+from copy import copy,deepcopy
 import numpy as np
 from matplotlib import pyplot as plt
 from os import chdir, getcwd, devnull, remove
@@ -29,6 +30,15 @@ class experiment(list):
         denominator : iterable
             An iterable containing strings which are keys in the crystal objects. These will be pooled to estimate the denominator. 
         """
+        gamma = []
+        for crystal in self:
+            ref = numerator[0]
+            for image in crystal[ref]:
+                if image.hkl is not None:
+                    index = image.index
+                    replicates = [i.get_image_by_index(index) for i in crystal if i.get_image_by_index(index) is not None and i.get_image_by_index(index).hkl is not None]
+
+
         pass
 
 class crystal(dict):
@@ -65,13 +75,32 @@ class image_series(list):
         self.imageFN = imageFN #The first image path
         self.pattern= None
         self.dirname= None
+        self.indices = {}
         self._populate()
+
+    def get_image_by_index(self, index):
+        """
+        Parameters
+        ----------
+        index : int
+            The index of the image in the rotation series you want to extract.
+        Returns
+        -------
+        im : image
+            image object corresponding to index.
+        """
+        if index in self.indices:
+            return self[self.indices[index]]
+        else:
+            return None
 
     def _populate(self):
         suffix = re.search(r"[0-9]+\..*?$", self.imageFN)
         ext    = re.search(r"\.(([0-9]|[A-z])*?)$", self.imageFN)
         self.pattern = self.imageFN[:suffix.start()] + "[0-9]"*(ext.start() - suffix.start()) + ext.group()
         [self.append(image(i)) for i in sorted(glob(self.pattern))]
+        for i, im in enumerate(self):
+            self.indices[im.imagenumber] = i
         self.dirname= self[0].dirname
 
     def __str__(self):
@@ -150,6 +179,7 @@ class image_series(list):
         verbose : bool (optional)
             If True, do not redirect nXDS output os.dev_null. Default is False.
         """
+        align   = kw.get('align', True)
         verbose = kw.get('verbose', False)
         stdout  = NULL
         stderr  = STDOUT
@@ -169,6 +199,8 @@ class image_series(list):
         imagedata = xds.uncorrectedhkl("INTEGRATE.HKL").imagedata
         nxdsin['JOB='] = " INTEGRATE"
         xparm = xds.xparm("XPARM.nXDS")
+        if align:
+            xparm.align_parms()
         spotnxds = xds.spotnxds("SPOT.nXDS")
         for im in self:
             if im.filename in spotnxds:
@@ -213,19 +245,23 @@ class image():
     spot : xds.spot
         Spotlist from nxds COLSPOT
     """
-    def __init__(self, image_path):
+    def __init__(self, image_path=None):
         self.path     = image_path
         self.nxdsin   = xds.nxdsinp()
         self.xparm    = None
         self.hkl      = None
         self.scale    = 1.
-        self.filename = re.search(r"[^\/]*?$", image_path).group() 
-        if "/" in self.path:
-            self.dirname = re.match(r".*\/", self.path).group()
-        else:
-            self.dirname = "./"
-        self.imagenumber = int(re.search(r"[0-9]+\..*?$", image_path).group().split('.')[0])
         self.spot = None #xds.spotlist
+        self.filename = None
+        self.dirname = None
+        self.imagenumber = None
+        if image_path is not None:
+            self.filename = re.search(r"[^\/]*?$", image_path).group() 
+            if "/" in self.path:
+                self.dirname = re.match(r".*\/", self.path).group()
+            else:
+                self.dirname = "./"
+            self.imagenumber = int(re.search(r"[0-9]+\..*?$", image_path).group().split('.')[0])
 
     def __str__(self):
         return """xds.image object
@@ -308,4 +344,3 @@ class image():
         plt.imshow(data, cmap=cmap_name)
         X,Y = self.spot[self.filename].data.X,self.spot[self.filename].data.Y
         plt.scatter(X, Y, s=100, facecolors='None', edgecolors='w')
-        
