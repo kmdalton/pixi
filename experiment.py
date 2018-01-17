@@ -16,10 +16,9 @@ class experiment(list):
     """
     def integrate(self, reference, nxdsinp=None):
         for crystal in self:
-            crystal[reference].integrate(nxdsinp)
-            crystal.sync_integration_parameters(reference)
+            crystal.integrate(reference, nxdsinp)
 
-    def ratio(self, numerator, denominator):
+    def doeke_scaling(self, numerator, denominator):
         """
         Later we will replace this an arbitrary intensity algebra. But for now, we will just calculate the ratio of image series.
 
@@ -32,27 +31,55 @@ class experiment(list):
         """
         gamma = []
         for crystal in self:
-            ref = numerator[0]
-            for image in crystal[ref]:
-                if image.hkl is not None:
-                    index = image.index
-                    replicates = [i.get_image_by_index(index) for i in crystal if i.get_image_by_index(index) is not None and i.get_image_by_index(index).hkl is not None]
-
-
-        pass
+            for image in crystal:
+                num = [image[i] for i in numerator   if image[i].hkl is not None]
+                den = [image[i] for i in denominator if image[i].hkl is not None]
+                print num, den
+                if len(num) > 0 and len(den) > 0:
+                    omega = sum([i.scale for i in den]) / sum([i.scale for i in num])
+                    g = sum([i.hkl for i in num]) * float(len(den)) / (sum([i.hkl for i in den]) * float(len(num)))
+                    g = g * omega
+                    gamma.append(g)
+        return gamma
 
 class crystal(dict):
+    def __init__(self):
+        self.indices = []
     """
-    A crystal is a dictionary of measurements at the same phi step.
+    A crystal is a container for image_series which allows easier iteration over equivalent images. Dict-like assignment is supported. However, keys may only be strings and values may only be image_series.
     """
-#Premature optimization is ___________
     def sync_integration_parameters(self, reference):
-        for im_series in self.values():
-            for image in im_series:
-                for ref in self[reference]:
-                    if image.imagenumber == ref.imagenumber:
-                        image.nxdsin = ref.nxdsin
-                        image.xparm  = ref.xparm
+        for imdict in self:
+            print imdict
+            for v in imdict.values():
+                print v
+                v.nxdsin = imdict[reference].nxdsin
+                v.xparm  = imdict[reference].xparm.copy()
+                v.xparm.directory = v.dirname
+
+    def integrate(self, reference, nxdsin):
+        self[reference].integrate(nxdsin)
+        self.sync_integration_parameters(reference)
+        for imdict in self:
+            for v in imdict.values():
+                if v.xparm is not None:
+                    v.integrate()
+
+    def __setitem__(self, k, v):
+        if isinstance(v, image_series) and isinstance(k, str):
+            for im in v:
+                if im.imagenumber not in self.indices:
+                    self.indices.append(im.imagenumber)
+            self.indices = sorted(self.indices)
+            dict.__setitem__(self, k, v)
+        elif not isinstance(k, str):
+            raise TypeError("key has Type {}, but crystal values can only have type image_series")
+        elif not isinstance(v, image_series):
+            raise TypeError("Value has Type {}, but crystal values can only have type image_series")
+
+    def __iter__(self):
+        for index in self.indices:
+            yield {k: v.get_image_by_index(index) for k,v in self.items()}
 
 class image_series(list):
     """
@@ -118,6 +145,7 @@ class image_series(list):
         for image in self:
             if image.filename in scaledict:
                 image.scale = scaledict[image.filename]
+        return self
 
     def generate_xdsin(self, **kw):
         """
@@ -194,9 +222,13 @@ class image_series(list):
         nxdsin['IMAGE_LIST='] = "LISTIM"
         nxdsin['IMAGE_DIRECTORY='] = self.dirname
         nxdsin.write()
+        if exists("INTEGRATE.HKL"):
+            remove("INTEGRATE.HKL")
         call(['nxds_par'], stdout=stdout, stderr=stderr)
 
-        imagedata = xds.uncorrectedhkl("INTEGRATE.HKL").imagedata
+        imagedata = None
+        if exists("INTEGRATE.HKL"):
+            imagedata = xds.uncorrectedhkl("INTEGRATE.HKL").imagedata
         nxdsin['JOB='] = " INTEGRATE"
         xparm = xds.xparm("XPARM.nXDS")
         if align:
@@ -207,16 +239,17 @@ class image_series(list):
                 im.spot = spotnxds.copy()
                 im.spot.clear()
                 im.spot[im.filename] = spotnxds[im.filename]
-            integration_params = imagedata.loc[imagedata['file_name']==im.filename]
-            if len(integration_params) == 1:
+            if imagedata is not None:
+                integration_params = imagedata.loc[imagedata['file_name']==im.filename]
                 im.nxdsin = xds.nxdsinp()
                 im.nxdsin.update(nxdsin)
-                im.nxdsin['BEAM_DIVERGENCE='] = float(integration_params.beam_divergence)
-                im.nxdsin['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(float(integration_params.sigma1), float(integration_params.sigma2))
-                im.nxdsin['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(float(integration_params.reflecting_range_esd_1), float(integration_params.reflecting_range_esd_2))
-                im.xparm = xparm.copy()
-                im.xparm.clear()
-                im.xparm[im.filename] = xparm[im.filename]
+                if len(integration_params) == 1:
+                    im.nxdsin['BEAM_DIVERGENCE='] = float(integration_params.beam_divergence)
+                    im.nxdsin['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(float(integration_params.sigma1), float(integration_params.sigma2))
+                    im.nxdsin['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(float(integration_params.reflecting_range_esd_1), float(integration_params.reflecting_range_esd_2))
+                    im.xparm = xparm.copy()
+                    im.xparm.clear()
+                    im.xparm[im.filename] = xparm[im.filename]
         return self
 
 class image():

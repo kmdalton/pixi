@@ -122,16 +122,15 @@ class xparm(dict):
     def align_parms(self, **kw):
         """
         Flip unit cell axes to align the closest axis with the +Y direction of the detector. 
-        
-        See Als
-        --------
-        parm.flip_axes
         """
         deltaphi = kw.get('deltaphi', None)
-        #k = self.keys()[0]
-        #if self[k].sign == '-':
-        #    self[k].flip_axes()
+        if len(self) == 0:
+            return self
+
         ref = self[iter(self).next()]
+        if ref.sign == '-':
+            ref.flip_axes()
+
         for k,v in self.items():
             if deltaphi is not None:
                 ref = copy(self.values().next())
@@ -732,6 +731,24 @@ class uncorrectedhkl():
             out.write("!END_OF_DATA")
 
     def __add__(self, other):
+        if isinstance(other, uncorrectedhkl):
+            d = self.data + other.data
+            err1 =  self.data['SIGMA(IOBS)']
+            err2 = other.data['SIGMA(IOBS)']
+            d['SIGMA(IOBS)'] = np.sqrt(err1**2 + err2**2)
+            d = d.dropna()
+            c = copy(self)
+            c.data = d
+            return c
+        else:
+            d = copy(self.data)
+            d['SIGMA(IOBS)'] = d['SIGMA(IOBS)']
+            d['IOBS'] = d['IOBS'] + other
+            c = copy(self)
+            c.data = d
+            return c
+
+    def __radd__(self, other):
         if isinstance(other, uncorrectedhkl):
             d = self.data + other.data
             err1 =  self.data['SIGMA(IOBS)']
