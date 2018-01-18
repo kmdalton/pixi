@@ -9,7 +9,29 @@ from StringIO import StringIO
 import re
 import numpy as np
 
+nXDS_FILENAMES = [
+    "nXDS.INP", 
+    "nXDS_ASCII.HKL", 
+    "SPOT.nXDS", 
+    "COLSPOT.LST", 
+    "XPARM.nXDS", 
+    "GXPARM.nXDS", 
+    "POWDER.cbf", 
+    "INTEGRATE.HKL", 
+    "X-CORRECTIONS.cbf", 
+    "Y-CORRECTIONS.cbf", 
+    "BLANK.cbf", 
+    "GAIN.cbf", 
+    "BKGINIT.cbf", 
+    "XDS.INP", #Technically not for nXDS, but is the output of "generate_XDS.INP"
+]
 
+def cleanup(directory):
+    if directory[-1] != '/':
+        directory = directory + '/'
+    for fn in nXDS_FILENAMES:
+        if exists(directory + filename):
+            remove(directory + filename)
 
 class symops(dict):
     def __init__(self, libFN=None):

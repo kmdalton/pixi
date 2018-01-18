@@ -18,3 +18,14 @@ Optionally, use the generate_XDS.INP to automatically generate sane parameters f
 *   -h, --help
 Print a description of the arguments.
 
+# Dependencies
+
+*   numpy
+
+*   matplotlib
+
+*   pandas
+
+*   nXDS
+
+*   generate_XDS.INP
