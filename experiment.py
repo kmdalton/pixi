@@ -6,6 +6,7 @@ from os import chdir, getcwd, devnull, remove
 from os.path import exists
 from subprocess import call,STDOUT
 from glob import glob
+import pandas as pd
 
 NULL = open(devnull, 'w')
 
@@ -29,17 +30,16 @@ class experiment(list):
         denominator : iterable
             An iterable containing strings which are keys in the crystal objects. These will be pooled to estimate the denominator. 
         """
-        gamma = []
+        gamma = None
         for crystal in self:
             for image in crystal:
                 num = [image[i] for i in numerator   if image[i].hkl is not None]
                 den = [image[i] for i in denominator if image[i].hkl is not None]
-                print num, den
                 if len(num) > 0 and len(den) > 0:
                     omega = sum([i.scale for i in den]) / sum([i.scale for i in num])
                     g = sum([i.hkl for i in num]) * float(len(den)) / (sum([i.hkl for i in den]) * float(len(num)))
                     g = g * omega
-                    gamma.append(g)
+                    gamma = pd.concat((gamma, g.data))
         return gamma
 
 class crystal(dict):
@@ -50,9 +50,7 @@ class crystal(dict):
     """
     def sync_integration_parameters(self, reference):
         for imdict in self:
-            print imdict
             for v in imdict.values():
-                print v
                 v.nxdsin = imdict[reference].nxdsin
                 v.xparm  = imdict[reference].xparm.copy()
                 v.xparm.directory = v.dirname

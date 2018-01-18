@@ -789,7 +789,7 @@ class uncorrectedhkl():
             d = self.data / other.data
             err1 = self.data['SIGMA(IOBS)']
             err2 = other.data['SIGMA(IOBS)']
-            d['SIGMA(IOBS)'] = d['IOBS']*np.sqrt(
+            d['SIGMA(IOBS)'] = np.abs(d['IOBS'])*np.sqrt(
                 (err1 / self.data['IOBS'])**2 + 
                 (err2 / other.data['IOBS'])**2
             )
@@ -799,7 +799,7 @@ class uncorrectedhkl():
             return c
         else:
             d = copy(self.data)
-            d['SIGMA(IOBS)'] = d['SIGMA(IOBS)'] / other
+            d['SIGMA(IOBS)'] = d['SIGMA(IOBS)'] / np.abs(other)
             d['IOBS'] = d['IOBS'] / other
             c = copy(self)
             c.data = d
@@ -810,7 +810,7 @@ class uncorrectedhkl():
             d = self.data * other.data
             err1 = self.data['SIGMA(IOBS)']
             err2 = other.data['SIGMA(IOBS)']
-            d['SIGMA(IOBS)'] = d['IOBS']*np.sqrt(
+            d['SIGMA(IOBS)'] = np.abs(d['IOBS'])*np.sqrt(
                 (err1 / self.data['IOBS'])**2 + 
                 (err2 / other.data['IOBS'])**2
             )
@@ -820,7 +820,7 @@ class uncorrectedhkl():
             return c
         else:
             d = copy(self.data)
-            d['SIGMA(IOBS)'] = d['SIGMA(IOBS)'] * other
+            d['SIGMA(IOBS)'] = d['SIGMA(IOBS)'] * np.abs(other)
             d['IOBS'] = d['IOBS'] * other
             c = copy(self)
             c.data = d
