@@ -37,7 +37,8 @@ class experiment(list):
                 den = [image[i] for i in denominator if image[i].hkl is not None]
                 if len(num) > 0 and len(den) > 0:
                     omega = sum([i.scale for i in den]) / sum([i.scale for i in num])
-                    g = sum([i.hkl for i in num]) * float(len(den)) / (sum([i.hkl for i in den]) * float(len(num)))
+                    #g = sum([i.hkl for i in num]) * float(len(den)) / (sum([i.hkl for i in den]) * float(len(num)))
+                    g = sum([i.hkl for i in num]) / sum([i.hkl for i in den]) 
                     g = g * omega
                     gamma = pd.concat((gamma, g.data))
         return gamma
