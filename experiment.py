@@ -52,9 +52,11 @@ class crystal(dict):
     def sync_integration_parameters(self, reference):
         for imdict in self:
             for v in imdict.values():
-                v.nxdsin = imdict[reference].nxdsin
-                v.xparm  = imdict[reference].xparm.copy()
-                v.xparm.directory = v.dirname
+                if imdict[reference].nxdsin is not None:
+                    v.nxdsin = imdict[reference].nxdsin
+                if imdict[reference].xparm is not None:
+                    v.xparm  = imdict[reference].xparm.copy()
+                    v.xparm.directory = v.dirname
 
     def integrate(self, reference, nxdsin):
         self[reference].integrate(nxdsin)
