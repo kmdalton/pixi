@@ -30,8 +30,8 @@ def cleanup(directory):
     if directory[-1] != '/':
         directory = directory + '/'
     for fn in nXDS_FILENAMES:
-        if exists(directory + filename):
-            remove(directory + filename)
+        if exists(directory + fn):
+            remove(directory + fn)
 
 class symops(dict):
     def __init__(self, libFN=None):
