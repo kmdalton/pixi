@@ -3,7 +3,7 @@ from copy import copy
 from xds_inp import xds_params, nxds_params
 from subprocess import call
 from os.path import exists,dirname,realpath
-from os import devnull
+from os import devnull, remove
 from glob import glob
 from StringIO import StringIO
 import re
