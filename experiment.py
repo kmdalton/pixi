@@ -246,7 +246,7 @@ class image_series(list):
                 im.nxdsin.update(nxdsin)
                 if len(integration_params) == 1:
                     im.nxdsin['BEAM_DIVERGENCE='] = float(integration_params.beam_divergence)
-                    im.nxdsin['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(float(integration_params.sigma1), float(integration_params.sigma2))
+                    #im.nxdsin['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(float(integration_params.sigma1), float(integration_params.sigma2))
                     im.nxdsin['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(float(integration_params.reflecting_range_esd_1), float(integration_params.reflecting_range_esd_2))
                     im.xparm = xparm.copy()
                     im.xparm.clear()
