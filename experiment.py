@@ -80,6 +80,19 @@ class crystal(dict):
         for index in self.indices:
             yield {k: v.get_image_by_index(index) for k,v in self.items()}
 
+    def to_csv(self, outFN):
+        data = None
+        for phi in self:
+            for k,v in phi.items():
+                if v.hkl is not None:
+                    d = v.hkl.data.copy()
+                    d['FILE'] = v.path
+                    d['IMAGENUMBER'] = v.imagenumber
+                    d['SERIES'] = k
+                    d['SCALE'] = v.scale
+                    data = pd.concat((data, d))
+        data.to_csv(outFN)
+
 class image_series(list):
     """
     A collection of image objects.
