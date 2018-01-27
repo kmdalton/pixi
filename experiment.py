@@ -52,9 +52,11 @@ class crystal(dict):
     def sync_integration_parameters(self, reference):
         for imdict in self:
             for v in imdict.values():
-                v.nxdsin = imdict[reference].nxdsin
-                v.xparm  = imdict[reference].xparm.copy()
-                v.xparm.directory = v.dirname
+                if imdict[reference].nxdsin is not None:
+                    v.nxdsin = imdict[reference].nxdsin
+                if imdict[reference].xparm is not None:
+                    v.xparm  = imdict[reference].xparm.copy()
+                    v.xparm.directory = v.dirname
 
     def integrate(self, reference, nxdsin):
         self[reference].integrate(nxdsin)
@@ -257,7 +259,7 @@ class image_series(list):
                 im.nxdsin.update(nxdsin)
                 if len(integration_params) == 1:
                     im.nxdsin['BEAM_DIVERGENCE='] = float(integration_params.beam_divergence)
-                    im.nxdsin['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(float(integration_params.sigma1), float(integration_params.sigma2))
+                    #im.nxdsin['BEAM_DIVERGENCE_E.S.D.=']  = "{} {}".format(float(integration_params.sigma1), float(integration_params.sigma2))
                     im.nxdsin['REFLECTING_RANGE_E.S.D.='] = "{} {}".format(float(integration_params.reflecting_range_esd_1), float(integration_params.reflecting_range_esd_2))
                     im.xparm = xparm.copy()
                     im.xparm.clear()
