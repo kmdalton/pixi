@@ -57,6 +57,7 @@ class crystal(dict):
                 if imdict[reference].xparm is not None:
                     v.xparm  = imdict[reference].xparm.copy()
                     v.xparm.directory = v.dirname
+                    v.xparm[v.filename] = v.xparm.pop(v.xparm.keys()[0])
 
     def integrate(self, reference, nxdsin):
         self[reference].integrate(nxdsin)
