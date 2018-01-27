@@ -3,7 +3,7 @@ from copy import copy
 from xds_inp import xds_params, nxds_params
 from subprocess import call
 from os.path import exists,dirname,realpath
-from os import devnull
+from os import devnull, remove
 from glob import glob
 from StringIO import StringIO
 import re
@@ -30,8 +30,8 @@ def cleanup(directory):
     if directory[-1] != '/':
         directory = directory + '/'
     for fn in nXDS_FILENAMES:
-        if exists(directory + filename):
-            remove(directory + filename)
+        if exists(directory + fn):
+            remove(directory + fn)
 
 class symops(dict):
     def __init__(self, libFN=None):
@@ -790,13 +790,21 @@ class uncorrectedhkl():
             c = copy(self)
             c.data = d
             return c
-#TODO: implement __rsub__
+
+    def __rsub(self, other):
+        "other - self"
+        if isinstance(other, uncorrectedhkl):
+            return other.__sub__(self)
+        else:
+            return (-1.*self).add(other)
 
     def __div__(self, other):
+        "self / other"
         if isinstance(other, uncorrectedhkl):
             d = self.data / other.data
             err1 = self.data['SIGMA(IOBS)']
             err2 = other.data['SIGMA(IOBS)']
+            print type(np)
             d['SIGMA(IOBS)'] = np.abs(d['IOBS'])*np.sqrt(
                 (err1 / self.data['IOBS'])**2 + 
                 (err2 / other.data['IOBS'])**2
@@ -812,9 +820,16 @@ class uncorrectedhkl():
             c = copy(self)
             c.data = d
             return c
-#TODO: implement __rdiv__
+
+    def __rdiv__(self, other):
+        "other / self"
+        if isinstance(other, uncorrectedhkl):
+            return other.__div__(uncorrectedhkl)
+        else:
+            return self.__mul__(1./other)
 
     def __mul__(self, other):
+        "self * other"
         if isinstance(other, image):
             d = self.data * other.data
             err1 = self.data['SIGMA(IOBS)']
@@ -836,6 +851,7 @@ class uncorrectedhkl():
             return c
 
     def __rmul__(self, other):
+        "other * self"
         return self.__mul__(other)
 
 SYMOPS = symops()
