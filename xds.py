@@ -804,7 +804,6 @@ class uncorrectedhkl():
             d = self.data / other.data
             err1 = self.data['SIGMA(IOBS)']
             err2 = other.data['SIGMA(IOBS)']
-            print type(np)
             d['SIGMA(IOBS)'] = np.abs(d['IOBS'])*np.sqrt(
                 (err1 / self.data['IOBS'])**2 + 
                 (err2 / other.data['IOBS'])**2
