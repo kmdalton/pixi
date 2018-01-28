@@ -19,7 +19,7 @@ class experiment(list):
         for crystal in self:
             crystal.integrate(reference, nxdsinp)
 
-    def doeke_scaling(self, numerator, denominator):
+    def doeke_scaling(self, numerator, denominator, minspots=None):
         """
         Later we will replace this an arbitrary intensity algebra. But for now, we will just calculate the ratio of image series.
 
@@ -29,12 +29,17 @@ class experiment(list):
             An iterable containing strings which are keys in the crystal objects. These will be pooled to estimate the numerator. 
         denominator : iterable
             An iterable containing strings which are keys in the crystal objects. These will be pooled to estimate the denominator. 
+        minspots : int (optional)
+            Minimum number of spots in an image to include in scaling. Default is 100. 
         """
+        if minspots is None:
+            minspots = 100
+
         gamma = None
         for crystal in self:
             for image in crystal:
-                num = [image[i] for i in numerator   if image[i].hkl is not None]
-                den = [image[i] for i in denominator if image[i].hkl is not None]
+                num = [image[i] for i in numerator   if image[i].hkl is not None and len(image[i].hkl.data) > minspots]
+                den = [image[i] for i in denominator if image[i].hkl is not None and len(image[i].hkl.data) > minspots]
                 if len(num) > 0 and len(den) > 0:
                     omega = sum([i.scale for i in den]) / sum([i.scale for i in num])
                     #g = sum([i.hkl for i in num]) * float(len(den)) / (sum([i.hkl for i in den]) * float(len(num)))
