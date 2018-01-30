@@ -308,6 +308,7 @@ class parm():
 
         orientations = [
             np.array([ self.A,  self.B,  self.C]),
+            np.array([-self.A, -self.B, -self.C]),
         ]
 
 
