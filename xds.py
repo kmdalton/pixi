@@ -527,96 +527,6 @@ class nxdsinp(xdsinp):
         with open(outFN, 'w') as out:
             out.write(self.text())
 
-class dataset():
-    def __init__(self, imageFN=None):
-        self.imageFN = imageFN #The first image path
-        self.imlist = []
-        self.pattern= None
-        self.dirname= None
-        self._populate()
-
-    def _populate(self):
-        suffix = re.search(r"[0-9]+\..*?$", self.imageFN)
-        ext    = re.search(r"\.(([0-9]|[A-z])*?)$", self.imageFN)
-        self.pattern = self.imageFN[:suffix.start()] + "[0-9]"*(ext.start() - suffix.start()) + ext.group()
-        self.imlist = [image(i) for i in sorted(glob(self.pattern))]
-        self.dirname= self.imlist[0].dirname
-
-    def __len__(self):
-        return len(self.imlist)
-
-    def __iter__(self):
-        for i in self.imlist:
-            yield i
-
-    def generate_xdsin(self, **kw):
-        verbose = kw.get('verbose', False)
-        STDOUT  = open(devnull, 'w')
-        if verbose:
-            STDOUT = None
-
-        if exists("XDS.INP"):
-            with open("XDS.INP", "r") as f:
-                backup = f.read()
-        else:
-            backup = None
-        call(["generate_XDS.INP", self.pattern], stdout=STDOUT, stderr=STDERR)
-        xdsin = xdsinp("XDS.INP")
-        if backup is not None:
-            with open("XDS.INP", "w") as f:
-                f.write(backup)
-        return xdsin
-
-    def generate_nxdsin(self):
-        xdsin = self.generate_xdsin()
-        nxdsin = nxdsinp()
-        nxdsin.update(xdsin)
-        return nxdsin
-
-class image():
-    """
-    Representation of an image file. Right now, this class has no methods, but the idea is to implement per image methods in the future (ie image.integrate, image.index, etc). 
-
-    Parameters
-    ----------
-    image_path : str
-        Full path of the image file
-
-    Attributes
-    ----------
-    path : str
-        Full path of image file
-    filename : str
-        Name of the image file
-    dirname : str
-        Directory which contains the image file
-    index : int
-        Index of the image in the rotation series. Determined from the numbering in image_path
-    """
-#TODO: add support for hkl arrays. modify uncorrectedhkl to iterate by returning 'image' objects. This is major structure change and should go on a new branch. However, it will vastly simplify the way the data are processed. The dream is to be able to go like:
-#for ref_image in ref_dataset:
-#   ref_image.integrate()
-#   for dataset in datasets:
-#       for image in dataset:
-#           if image.index == ref_image.index:
-#               image.integrate(xds_params=image.integration_params)
-#or something like that. So that we can hide away all the XDS parameters and such
-    def __init__(self, image_path):
-        self.path = image_path
-        self.filename = re.search(r"[^\/]*?$", image_path).group() 
-        if "/" in self.path:
-            self.dirname = re.match(r".*\/", self.path).group()
-        else:
-            self.dirname = "./"
-        self.index = int(re.search(r"[0-9]+\..*?$", image_path).group().split('.')[0])
-
-    def __str__(self):
-        return """xds.image object
-            path    : {}
-            filename: {}
-            dirname : {}
-            index   : {}""".format(self.path, self.filename, self.dirname, self.index)
-
 
 xds_format_strings = {
     "H"          : "{: 6d}",
@@ -753,6 +663,11 @@ class uncorrectedhkl():
             out.write('\n'.join(map(format, self.data)))
             out.write("!END_OF_DATA")
 
+    def threshold(self, sigma):
+        """Threshold intensities at a given I/SIGMA(I) level"""
+        self.data = self.data[self.data['IOBS']/self.data['SIGMA(IOBS)'] > sigma]
+        return self
+
     def __add__(self, other):
         if isinstance(other, uncorrectedhkl):
             d = self.data + other.data
@@ -830,7 +745,7 @@ class uncorrectedhkl():
 
     def __mul__(self, other):
         "self * other"
-        if isinstance(other, image):
+        if isinstance(other, uncorrectedhkl):
             d = self.data * other.data
             err1 = self.data['SIGMA(IOBS)']
             err2 = other.data['SIGMA(IOBS)']

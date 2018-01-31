@@ -19,7 +19,7 @@ class experiment(list):
         for crystal in self:
             crystal.integrate(reference, nxdsinp)
 
-    def doeke_scaling(self, numerator, denominator, minspots=None):
+    def doeke_scaling(self, numerator, denominator, minspots=None, sigma_cutoff=None):
         """
         Later we will replace this an arbitrary intensity algebra. But for now, we will just calculate the ratio of image series.
 
@@ -31,15 +31,20 @@ class experiment(list):
             An iterable containing strings which are keys in the crystal objects. These will be pooled to estimate the denominator. 
         minspots : int (optional)
             Minimum number of spots in an image to include in scaling. Default is 100. 
+        sigma_cutoff : float (optional)
+            Minimum I/SIG(I) for a spot to be included in the calculation. Default is 1.
         """
         if minspots is None:
             minspots = 100
 
+        if sigma_cutoff is None:
+            sigma_cutoff = 1.
+
         gamma = None
         for crystal in self:
             for image in crystal:
-                num = [image[i] for i in numerator   if image[i].hkl is not None and len(image[i].hkl.data) > minspots]
-                den = [image[i] for i in denominator if image[i].hkl is not None and len(image[i].hkl.data) > minspots]
+                num = [image[i].threshold(sigma_cutoff) for i in numerator   if image[i].hkl is not None and len(image[i].hkl.data) > minspots]
+                den = [image[i].threshold(sigma_cutoff) for i in denominator if image[i].hkl is not None and len(image[i].hkl.data) > minspots]
                 if len(num) > 0 and len(den) > 0:
                     omega = sum([i.scale for i in den]) / sum([i.scale for i in num])
                     #g = sum([i.hkl for i in num]) * float(len(den)) / (sum([i.hkl for i in den]) * float(len(num)))
@@ -386,6 +391,11 @@ class image():
         call(['nxds_par'], stdout=stdout, stderr=stderr)
         if exists('INTEGRATE.HKL'):
             self.hkl = xds.uncorrectedhkl('INTEGRATE.HKL')
+
+    def threshold(self, sigma):
+        if self.hkl is not None:
+            self.hkl = self.hkl.threshold(sigma)
+        return self
 
     def plot(self, **kw):
         #All pixels greater than this percentile get the same value
