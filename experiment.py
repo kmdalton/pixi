@@ -12,19 +12,22 @@ import cvxpy as cvx
 NULL = open(devnull, 'w')
 
 def kevin_scaling(cryst):
+    minspots = 100
     g = None
     for im in cryst:
-        num = sum([im[i].hkl for i in im if 'on' in i])
-        den = sum([im[i].hkl for i in im if 'off' in i])
+        num = sum([im[i].hkl for i in im if 'on' in  i and im[i].hkl is not None and len(im[i].hkl.data) > minspots])
+        den = sum([im[i].hkl for i in im if 'off' in i and im[i].hkl is not None and len(im[i].hkl.data) > minspots])
         a = cvx.Variable()
-        idx = num.data.index.intersection(den.data.index)
-        w = (num+den).data.loc[idx]['SIGMA(IOBS)']
-        n,d = num.data.loc[idx]['IOBS'],den.data.loc[idx]['IOBS']
-        n,d,w = np.array(n),np.array(d),np.array(w)
-        loss = cvx.norm1(cvx.mul_elemwise(w, a*n-d))
-        p = cvx.Problem(cvx.Minimize(loss))
-        p.solve(verbose=True)
-        g = pd.concat((g, (a.value*num / den).data))
+        if isinstance(num, xds.uncorrectedhkl) and isinstance(den, xds.uncorrectedhkl):
+            idx = num.data.index.intersection(den.data.index)
+            if len(idx) > 0.:
+                w = (num+den).data.loc[idx]['SIGMA(IOBS)']
+                n,d = num.data.loc[idx]['IOBS'],den.data.loc[idx]['IOBS']
+                n,d,w = np.array(n),np.array(d),np.array(w)
+                loss = cvx.norm1(cvx.mul_elemwise(1./w, a*n-d))
+                p = cvx.Problem(cvx.Minimize(loss))
+                p.solve()
+                g = pd.concat((g, (a.value*num / den).data))
     return g
 
 class experiment(list):
