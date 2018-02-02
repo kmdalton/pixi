@@ -7,9 +7,25 @@ from os.path import exists
 from subprocess import call,STDOUT
 from glob import glob
 import pandas as pd
+import cvxpy as cvx
 
 NULL = open(devnull, 'w')
 
+def kevin_scaling(cryst):
+    g = None
+    for im in cryst:
+        num = sum([im[i].hkl for i in im if 'on' in i])
+        den = sum([im[i].hkl for i in im if 'off' in i])
+        a = cvx.Variable()
+        idx = num.data.index.intersection(den.data.index)
+        w = (num+den).data.loc[idx]['SIGMA(IOBS)']
+        n,d = num.data.loc[idx]['IOBS'],den.data.loc[idx]['IOBS']
+        n,d,w = np.array(n),np.array(d),np.array(w)
+        loss = cvx.norm1(cvx.mul_elemwise(w, a*n-d))
+        p = cvx.Problem(cvx.Minimize(loss))
+        p.solve(verbose=True)
+        g = pd.concat((g, (a.value*num / den).data))
+    return g
 
 class experiment(list):
     """
