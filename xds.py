@@ -297,6 +297,7 @@ class parm():
         self.x = np.dot(a, [1., 0., 0.])
         self.y = np.dot(a, [0., 0., 1.])
         self.phi = np.angle(np.complex(self.x, self.y), deg=True)
+        self._update_lines()
         return self
 
     def align(self, ref, symops=None, idxambops=None):
@@ -308,7 +309,7 @@ class parm():
 
         orientations = [
             np.array([ self.A,  self.B,  self.C]),
-            np.array([-self.A, -self.B, -self.C]),
+            #np.array([-self.A, -self.B, -self.C]), NO FRIEDEL --> changes handedness BAD
         ]
 
 
