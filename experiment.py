@@ -72,6 +72,7 @@ class experiment(list):
                     gamma = pd.concat((gamma, g.data))
         return gamma
 
+
 class crystal(dict):
     def __init__(self):
         self.indices = []
@@ -262,7 +263,7 @@ class image_series(list):
         if nxdsin is None:
             nxdsin = self.generate_nxdsin()
         self.write_imlist("LISTIM")
-        nxdsin['JOB='] = 'XYCORR INIT COLSPOT POWDER IDXREF INTEGRATE'
+        nxdsin['JOB='] = 'XYCORR INIT COLSPOT POWDER IDXREF INTEGRATE CORRECT'
         nxdsin['IMAGE_LIST='] = "LISTIM"
         nxdsin['IMAGE_DIRECTORY='] = self.dirname
         nxdsin.write()
@@ -274,7 +275,7 @@ class image_series(list):
         if exists("INTEGRATE.HKL"):
             imagedata = xds.uncorrectedhkl("INTEGRATE.HKL").imagedata
         nxdsin['JOB='] = " INTEGRATE"
-        xparm = xds.xparm("XPARM.nXDS")
+        xparm = xds.xparm("GXPARM.nXDS")
         if align:
             xparm.align_parms()
         spotnxds = xds.spotnxds("SPOT.nXDS")
