@@ -391,10 +391,15 @@ class parm():
 	return self
 
     def _update_lines(self):
-        fun = lambda x: "{: 0.6f}E{:+03d}".format(x/10**(np.floor(np.log10(np.abs(x)))+1), int(np.floor(np.log10(np.abs(x))) +1))
-        self.lines[2] = " "+" ".join(map(fun, self.A)) + "\n"
-        self.lines[3] = " "+" ".join(map(fun, self.B)) + "\n"
-        self.lines[4] = " "+" ".join(map(fun, self.C)) + "\n"
+        def formatfun(x):
+            if x == 0.:
+                return "{: 0.6f}E{:+03d}".format(0, 0)
+            else:
+                return "{: 0.6f}E{:+03d}".format(x/10**(np.floor(np.log10(np.abs(x)))+1), int(np.floor(np.log10(np.abs(x))) +1))
+
+        self.lines[2] = " "+" ".join(map(formatfun, self.A)) + "\n"
+        self.lines[3] = " "+" ".join(map(formatfun, self.B)) + "\n"
+        self.lines[4] = " "+" ".join(map(formatfun, self.C)) + "\n"
 
     def __str__(self):
         return """parm instance:
